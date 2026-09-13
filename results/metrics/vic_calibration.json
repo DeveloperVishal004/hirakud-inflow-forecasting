@@ -1,0 +1,69 @@
+{
+  "params": {
+    "b_infilt": 0.18343788455023619,
+    "Ds": 0.005493935195257649,
+    "Dsmax": 23.540526887923612,
+    "Ws": 0.8332834990611533,
+    "d2": 1.9438866732675042,
+    "d3": 2.801553748293461,
+    "wpwp_scale": 0.2547183997777548,
+    "root_scale": 1.8135575345419268
+  },
+  "penalised_score": 0.26407972361093124,
+  "objective": "KGE(monsoon) - wb_weight * [hinge(runoff_coeff, rc_band) + hinge(ET_over_P, et_band)]",
+  "wb_weight": 2.0,
+  "score_days": "all",
+  "n_days_scored": 2740,
+  "rc_band": [
+    0.35,
+    0.4
+  ],
+  "et_band": [
+    0.55,
+    0.65
+  ],
+  "water_balance": {
+    "runoff_coefficient": 0.4399922065628746,
+    "ET_over_P": 0.5742698806269172,
+    "closure": 1.0142620871897918,
+    "P_mm_per_year": 1218.0588962718252,
+    "KGE": 0.34406413673668035,
+    "penalty": 0.039992206562874555
+  },
+  "n_evaluations": 432,
+  "minutes": 135.25027559598286,
+  "bounds": {
+    "b_infilt": [
+      0.001,
+      0.6
+    ],
+    "Ds": [
+      0.001,
+      1.0
+    ],
+    "Dsmax": [
+      0.1,
+      40.0
+    ],
+    "Ws": [
+      0.5,
+      1.0
+    ],
+    "d2": [
+      0.1,
+      2.0
+    ],
+    "d3": [
+      0.3,
+      3.0
+    ],
+    "wpwp_scale": [
+      0.25,
+      1.0
+    ],
+    "root_scale": [
+      0.75,
+      3.0
+    ]
+  }
+}

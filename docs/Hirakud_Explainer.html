@@ -1,0 +1,1196 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<title>Hirakud Inflow Forecasting — Explainer</title>
+<style>
+@page { size: A4; margin: 15mm 14mm 13mm 14mm; }
+:root{--ink:#12161c;--mut:#5b6675;--line:#d9dee6;--soft:#f5f7fa;
+ --accent:#1a4f8a;--accent2:#0f7a5a;--warn:#9a5410;--bad:#8f2230;--quote:#5b3a86;}
+*{box-sizing:border-box}
+body{font-family:"Charter",Georgia,serif;color:var(--ink);font-size:10.4pt;line-height:1.55;margin:0}
+h1,h2,h3,h4,.ui{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+h2{font-size:15.5pt;margin:0 0 3mm;padding-bottom:1.5mm;border-bottom:2px solid var(--accent);color:var(--accent)}
+h3{font-size:11.8pt;margin:6mm 0 2mm;color:var(--ink)}
+h4{font-size:9.4pt;margin:4.5mm 0 1.5mm;color:var(--mut);text-transform:uppercase;letter-spacing:.07em}
+p{margin:0 0 2.8mm}
+.page{page-break-after:always}
+.page:last-child{page-break-after:auto}
+table{width:100%;border-collapse:collapse;margin:3mm 0 4mm;font-size:8.9pt;
+ font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+th{background:var(--soft);text-align:left;padding:1.8mm 2mm;border-bottom:1.5px solid var(--line);font-weight:600;font-size:8.5pt}
+td{padding:1.7mm 2mm;border-bottom:.5px solid var(--line);vertical-align:top}
+tr:last-child td{border-bottom:1px solid var(--line)}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+.good{color:var(--accent2);font-weight:700}.bad{color:var(--bad);font-weight:700}
+pre{background:#0f1319;color:#dfe6ef;padding:3mm;border-radius:2px;font-size:7.2pt;line-height:1.35;
+ font-family:"SF Mono",Menlo,Consolas,monospace;margin:3mm 0;white-space:pre}
+code{font-family:"SF Mono",Menlo,Consolas,monospace;font-size:8.6pt;background:var(--soft);padding:.3mm 1mm}
+.box{border-left:3px solid var(--accent);background:var(--soft);padding:2.8mm 3.2mm;margin:3.5mm 0;font-size:9.6pt}
+.box .lbl{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:7.5pt;font-weight:700;
+ letter-spacing:.11em;text-transform:uppercase;color:var(--accent);display:block;margin-bottom:1.2mm}
+.box.ana{border-color:var(--warn)}.box.ana .lbl{color:var(--warn)}
+.box.key{border-color:var(--accent2)}.box.key .lbl{color:var(--accent2)}
+.box.warn{border-color:var(--bad)}.box.warn .lbl{color:var(--bad)}
+.box.def{border-color:var(--quote)}.box.def .lbl{color:var(--quote)}
+.cover{padding-top:12mm}
+.kicker{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:8.2pt;letter-spacing:.3em;
+ text-transform:uppercase;color:var(--mut);margin-bottom:7mm}
+.cover h1{font-size:29pt;line-height:1.08;margin:0 0 5mm;color:var(--accent);letter-spacing:-.02em}
+.sub{font-size:11.5pt;color:var(--mut);margin-bottom:9mm;max-width:152mm;line-height:1.45}
+.tiles{display:flex;gap:2.5mm;margin:8mm 0}
+.tile{flex:1;border:1px solid var(--line);border-top:3px solid var(--accent);padding:3mm;background:#fff}
+.tile .v{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:18pt;font-weight:700;color:var(--accent);line-height:1}
+.tile .k{font-family:"Helvetica Neue",Helvetica,Arial,sans-serif;font-size:7.6pt;color:var(--mut);margin-top:1.5mm;line-height:1.3}
+.meta{border-top:1px solid var(--line);padding-top:4mm;margin-top:9mm;font-size:8.6pt;color:var(--mut)}
+.toc{list-style:none;padding:0;margin:3mm 0}
+.toc li{padding:1.9mm 0;border-bottom:.5px solid var(--line);font-size:10.2pt;
+ font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+.toc .n{display:inline-block;width:9mm;color:var(--accent);font-weight:700}
+ul,ol{margin:0 0 3mm;padding-left:5.5mm}li{margin-bottom:1.4mm}
+.pf{font-size:7.5pt;color:var(--mut);text-align:center;border-top:.5px solid var(--line);
+ padding-top:1.5mm;margin-top:4mm;font-family:"Helvetica Neue",Helvetica,Arial,sans-serif}
+.small{font-size:8.8pt;color:var(--mut)}
+</style></head><body>
+
+<div class="page cover">
+  <div class="kicker">Project Explainer</div>
+  <h1>Predicting the Water<br>Before It Arrives</h1>
+  <div class="sub">How two artificial-intelligence models are chained together to forecast, up to
+  17 days ahead, how much water will flow into Hirakud Dam on the Mahanadi River &mdash; written
+  for a reader who knows nothing about hydrology or machine learning. Every technical term is
+  explained where it first appears.</div>
+  <div class="tiles">
+    <div class="tile"><div class="v">17 days</div><div class="k">how far ahead we forecast</div></div>
+    <div class="tile"><div class="v">11</div><div class="k">monsoon seasons of data</div></div>
+    <div class="tile"><div class="v">2</div><div class="k">AI models, one per stage</div></div>
+    <div class="tile"><div class="v">85,215</div><div class="k">km&sup2; of land draining to the dam</div></div>
+  </div>
+  <p><b>The project in one sentence:</b> take a blurry global weather forecast, sharpen it with one
+  AI model, then convert the sharpened rainfall into a reservoir inflow forecast with a second AI
+  model &mdash; and measure honestly how well that actually works.</p>
+  <div class="meta">
+    <b>Where:</b> Mahanadi River, upstream of Hirakud Dam, Odisha, India<br>
+    <b>When:</b> the monsoon seasons of 2004&ndash;2014 &mdash; eleven years<br>
+    <b>Built on:</b> Dong et al. (2025), <i>HESS</i> 29:2023&ndash;2042 &middot; Ambika et al.
+    (2025), <i>GRL</i> 52:e2025GL116707
+  </div>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>Contents</h2>
+  <ul class="toc">
+    <li><span class="n">1</span> The Problem: Why Anyone Needs This</li>
+    <li><span class="n">2</span> The Data, and the &ldquo;Grid&rdquo; Idea</li>
+    <li><span class="n">3</span> Stage 1 &mdash; Sharpening the Rainfall Forecast (the CNN)</li>
+    <li><span class="n">4</span> Stage 2 &mdash; Turning Rainfall into Inflow (the Transformer)</li>
+    <li><span class="n">5</span> How Do We Know If It Works? (the scoring rules)</li>
+    <li><span class="n">6</span> The Results</li>
+    <li><span class="n">7</span> What Does Not Work, and Why</li>
+    <li><span class="n">8</span> Three Findings Worth Remembering</li>
+    <li><span class="n">9</span> Glossary of Every Term Used</li>
+  </ul>
+
+  <h2 style="margin-top:7mm">Executive Summary (Read This First)</h2>
+  <p>Hirakud Dam sits on the Mahanadi River in Odisha. Every day during the monsoon, the people who
+  operate it must decide how much water to let out. To decide well, they need to know how much
+  water is <i>about to arrive</i> &mdash; days before it does.</p>
+  <p>This project builds a system that answers that question for the next 1 to 17 days. It works
+  in two stages, and each stage uses a different kind of artificial-intelligence model, taken from
+  a different published research paper.</p>
+  <table>
+    <tr><th style="width:14%">Stage</th><th style="width:43%">The problem it solves</th><th>The tool</th></tr>
+    <tr><td><b>Stage 1</b></td>
+        <td>The global weather forecast is far too blurry. One of its grid squares is about
+        166&nbsp;km across &mdash; bigger than the distance from Delhi to Agra &mdash; and it gives
+        just one rainfall number for that whole area.</td>
+        <td>A <b>convolutional neural network</b>, the kind of AI used for recognising objects in
+        photographs. It sharpens the blurry forecast into a detailed one.</td></tr>
+    <tr><td><b>Stage 2</b></td>
+        <td>Rainfall is not the same thing as river flow. Some rain soaks in, some evaporates, some
+        runs off &mdash; and it arrives at the dam days later.</td>
+        <td>A <b>transformer</b>, the same family of model behind ChatGPT, but adapted to read a
+        <i>future</i> rainfall sequence and output a flow forecast.</td></tr>
+  </table>
+
+  <h4>What we found</h4>
+  <ul>
+    <li>Sharpening the forecast <b>works</b>. The AI-sharpened rainfall is measurably better than
+        the raw global forecast, which on its own has essentially no local skill at all.</li>
+    <li>If we <i>tell</i> the second model exactly how much rain actually fell, it predicts inflow
+        very well &mdash; and remarkably, it gets <b>better</b> at longer ranges, not worse.</li>
+    <li>When we instead give it a real <i>forecast</i> of rain, performance falls sharply.</li>
+  </ul>
+  <div class="box key"><span class="lbl">The single most important conclusion</span>
+  That drop is <b>not</b> caused by a weakness in our river model. It is caused by the rainfall
+  forecast itself being wrong. This matters enormously, because it means the way to improve this
+  system is <b>better weather information</b>, not a cleverer river model. We did not just assume
+  this &mdash; we built a full physics-based river model to test it, and the physics-based model
+  did <i>worse</i> when fed forecast rainfall, not better.</div>
+  <p><b>The honest bottom line:</b> the system is genuinely useful out to about <b>7 days</b>.
+  Between 8 and 17 days it is still slightly better than simply guessing the seasonal average,
+  but only slightly, and this document says so plainly rather than hiding it.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>1 &nbsp; The Problem: Why Anyone Needs This</h2>
+
+  <h3>1.1 What is a dam, in this context?</h3>
+  <p>A dam is a wall across a river. Behind it, water collects in an artificial lake called a
+  <b>reservoir</b>. Hirakud Dam holds back the Mahanadi River in Odisha, and the water it stores is
+  used for three things: preventing floods downstream, irrigating farmland, and generating
+  electricity.</p>
+  <p>Two words are used constantly in this document:</p>
+  <div class="box def"><span class="lbl">Definitions</span>
+  <b>Inflow</b> &mdash; the water arriving <i>into</i> the reservoir from the river and the land
+  upstream. This is the thing we are trying to predict.<br><br>
+  <b>Catchment</b> (or basin) &mdash; the whole area of land that drains into the dam. When rain
+  falls anywhere in this area, some of it eventually reaches the reservoir. Hirakud's catchment is
+  about <b>85,000&nbsp;km&sup2;</b>, roughly the size of Austria.<br><br>
+  <b>Cumec</b> &mdash; the unit of river flow: one cubic metre of water per second. A large flood
+  at Hirakud can exceed 20,000 cumecs, which is 20,000 tonnes of water passing every second.</div>
+
+  <h3>1.2 The operator's dilemma</h3>
+  <p>Here is the actual human problem, and it is worth stating before any mathematics.</p>
+  <p>A dam operator must release water <i>before</i> they know how much is coming.</p>
+  <ul>
+    <li><b>Release too little</b>, and the reservoir fills up. When the flood finally arrives there
+    is nowhere to put it, so you must dump enormous volumes suddenly &mdash; which floods the towns
+    downstream. The dam has made things worse, not better.</li>
+    <li><b>Release too much</b>, and you have thrown away water that farmers needed for irrigation
+    and that the turbines needed for power.</li>
+  </ul>
+  <p>Once the water has arrived, it is too late to optimise. The decision had to be made days
+  earlier. <b>That is why forecasting matters: it converts an impossible decision into a merely
+  difficult one.</b></p>
+
+  <h3>1.3 Why can't we just forecast the rain and be done?</h3>
+  <p>Because the same rainfall produces wildly different amounts of river flow, depending on how
+  wet the ground already was.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the sponge</span>
+  Ask: &ldquo;if I pour one litre of water on this sponge, will it drip?&rdquo; The honest answer
+  is &ldquo;it depends what you poured on it last week.&rdquo; A bone-dry sponge soaks up
+  everything and drips nothing. A sponge already saturated drips almost the whole litre
+  immediately.<br><br>
+  Soil behaves exactly the same way. 100&nbsp;mm of rain on dry soil at the start of the monsoon
+  mostly soaks in. The same 100&nbsp;mm falling on soil already saturated from a week of rain
+  becomes almost pure runoff, and races into the reservoir.</div>
+  <p>So any useful model must know not only the rainfall forecast, but also <b>how wet the
+  catchment already is</b>. This is called the <b>antecedent condition</b> &mdash; simply, "the
+  state of things beforehand." Every design decision in Stage 2 follows from this one fact.</p>
+
+  <h3>1.4 Why can't we use the global weather forecast directly?</h3>
+  <p>Because it is far too coarse. This is explained fully in Section 2, but the short version is
+  that the global model divides the world into squares about 166&nbsp;km wide and reports a single
+  rainfall number for each. One such square covers the uplands of Chhattisgarh, dense forest, and
+  the Mahanadi valley floor all at once, averaged into one number. The differences between those
+  places &mdash; which are exactly what determines where water runs off &mdash; are invisible.</p>
+
+  <h3>1.5 What &ldquo;sub-seasonal&rdquo; means, and why it is the hardest window</h3>
+  <p>Forecasting problems fall along a spectrum of how far ahead you are looking:</p>
+<pre>
+   Hours - 3 days    3 - 10 days      10 - 17 days         3+ months
+  +--------------+ +--------------+ +----------------+ +---------------+
+  |   WEATHER    | | MEDIUM-RANGE | |  SUB-SEASONAL  | |    CLIMATE    |
+  |              | |              | | (THIS PROJECT) | |               |
+  +--------------+ +--------------+ +----------------+ +---------------+
+   Very reliable    Fairly good     *** THE GAP ***    Broad averages
+                                                        only
+</pre>
+  <p>Why is the middle window the hard one? There are two completely different reasons forecasts
+  can work, and sub-seasonal falls between them.</p>
+  <ol>
+    <li><b>Short-range forecasts work because of memory.</b> Today's atmosphere strongly determines
+    tomorrow's. Measure it accurately now, run the physics forward, and you get a good answer. But
+    this memory fades &mdash; after roughly one to two weeks, tiny errors in today's measurement
+    have grown large enough to swamp the forecast.</li>
+    <li><b>Seasonal forecasts work for a different reason.</b> Slow, heavy things &mdash; ocean
+    temperatures, soil moisture &mdash; nudge the <i>average</i> weather over months. They cannot
+    tell you about next Tuesday, but they can tell you whether the season will be wet or dry.</li>
+  </ol>
+  <p>Sub-seasonal, 10 to 17 days out, falls in between. The atmosphere has forgotten where it
+  started, but the slow ocean signals are too weak to pin down day-by-day rain. Researchers call
+  this the <b>predictability desert</b>.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the billiard ball</span>
+  You can predict exactly where a rolling billiard ball will be one second from now, because you
+  can see its speed and direction. You can also predict that, given the table's tilt, it will
+  eventually settle in the low corner. But predicting precisely where it will be <b>thirty
+  seconds</b> from now &mdash; after several unpredictable bounces &mdash; is far harder than
+  either. That middle case is sub-seasonal forecasting.</div>
+  <p>We measured this decay directly for our basin. The global model's rainfall forecast agrees
+  with reality reasonably at short range, and by days 8&ndash;17 that agreement has almost
+  vanished. This is not a flaw in our work; it is the physical limit we are working against, and
+  Section 8 returns to what it implies.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>2 &nbsp; The Data, and the &ldquo;Grid&rdquo; Idea</h2>
+
+  <h3>2.1 What is ECMWF?</h3>
+  <p>ECMWF stands for the <b>European Centre for Medium-Range Weather Forecasts</b>. It is an
+  intergovernmental research institute that runs one of the best physics-based weather models in
+  the world. When you check a weather app, there is a good chance the numbers ultimately came from
+  a model like this one.</p>
+  <p>ECMWF also runs a product called <b>S2S</b>, short for &ldquo;Sub-seasonal to Seasonal.&rdquo;
+  These are forecasts that reach several weeks ahead instead of several days. That S2S product is
+  the raw material this project tries to improve.</p>
+  <div class="box"><span class="lbl">An important point about what we are building</span>
+  We are <b>not</b> building a weather model from scratch. That would require supercomputers and a
+  large physics team. We are building a <b>post-processor</b> &mdash; a correction layer that sits
+  on top of ECMWF's physics and fixes its known weaknesses. This is much cheaper, and it is a
+  realistic thing for a small team to do.</div>
+
+  <h3>2.2 What is a &ldquo;reforecast&rdquo;?</h3>
+  <p>To train an AI model you need examples where you know both the question and the answer. So we
+  do not use live forecasts &mdash; we use <b>reforecasts</b>: forecasts that ECMWF re-ran for
+  <i>past</i> dates using today's model.</p>
+  <p>So for, say, 3 July 2009, we have both what the model predicted and what actually happened.
+  That pairing is what allows the AI to learn the difference between the two, which is exactly the
+  correction we want it to make.</p>
+
+  <h3>2.3 The grid problem: giant pixels versus small ones</h3>
+  <p>This is the single most important concept in Stage 1, so it is worth going slowly.</p>
+  <p>Every weather model divides the planet into a grid of boxes. Each box gets one number for
+  rainfall, one for temperature, and so on. <b>The model has no idea what happens inside a box.</b></p>
+  <p>The ECMWF forecast comes on a grid of 1.5&deg; boxes; our rainfall observations come on a much
+  finer grid of 0.25&deg; boxes. Since 1.5 &divide; 0.25 = 6, each coarse box contains a 6 &times; 6
+  block of 36 fine boxes.</p>
+  <table>
+    <tr><th>Grid</th><th>Box size</th><th>Roughly</th><th>One box covers</th></tr>
+    <tr><td>ECMWF forecast (our input)</td><td>1.5&deg;</td><td>~166 km across</td><td>~27,500 km&sup2;</td></tr>
+    <tr><td>Observations (our target)</td><td>0.25&deg;</td><td>~25 km across</td><td>~625 km&sup2;</td></tr>
+  </table>
+<pre>
+   ONE 1.5-degree ECMWF BOX               THE SAME AREA AT 0.25 degrees
+   (~166 km x 166 km)                     (36 boxes, each ~25 km x 25 km)
+   +---------------------------+          +----+----+----+----+----+----+
+   |                           |          |    |    |    |    |    |    |
+   |                           |          +----+----+----+----+----+----+
+   |                           |          |    |    |    |    |    |    |
+   |     "4.2 mm of rain"      |   ==>    +----+----+----+----+----+----+
+   |      (ONE number for      |          |    |    |    |    |    |    |
+   |       the whole area)     |          +----+----+----+----+----+----+
+   |                           |          |    |    |    |    |    |    |
+   |                           |          +----+----+----+----+----+----+
+   |                           |          |    |    |    |    |    |    |
+   +---------------------------+          +----+----+----+----+----+----+
+                                          36 separate, physically
+                                          plausible rainfall values
+</pre>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the photograph</span>
+  Imagine a photo of a mountain range taken at such low resolution that each pixel is 166&nbsp;km
+  wide. An entire mountain, its valley, its river and three towns are averaged into a single grey
+  blob. Now imagine the same photo where each pixel is 25&nbsp;km wide &mdash; you can suddenly
+  tell the wet windward slope from the dry rain shadow behind it.<br><br>
+  <b>Downscaling</b> is the task of intelligently converting the first image into the second. Not
+  by simply stretching it &mdash; that just gives you blurry big pixels &mdash; but by
+  <i>inferring</i> the fine detail from patterns the model learned during training.</div>
+
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h3>2.4 The three datasets we use</h3>
+  <table>
+    <tr><th>Dataset</th><th>What it is</th><th>Its role</th><th>Period</th></tr>
+    <tr><td><b>ECMWF S2S reforecast</b></td>
+        <td>Coarse global forecasts, re-run for past dates</td>
+        <td>The raw input we are trying to improve</td><td>2004&ndash;2023</td></tr>
+    <tr><td><b>IMD gridded rainfall</b></td>
+        <td>India Meteorological Department's rainfall maps, built by interpolating thousands of
+            rain gauges</td>
+        <td>The <b>truth</b> &mdash; what actually fell. Stage 1 learns to reproduce this.</td>
+        <td>2003&ndash;2023</td></tr>
+    <tr><td><b>Hirakud inflow record</b></td>
+        <td>Daily measured water arriving at the dam</td>
+        <td>The <b>truth</b> for Stage 2 &mdash; the thing we ultimately predict</td>
+        <td>2003&ndash;2014</td></tr>
+  </table>
+
+  <h3>2.5 What is an &ldquo;ensemble,&rdquo; and why do we only have one?</h3>
+  <p>Because the atmosphere is chaotic, forecasters do not run their model once. They run it many
+  times, each time nudging the starting conditions very slightly. The collection of runs is called
+  an <b>ensemble</b>, and each individual run is a <b>member</b>.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; ten balls down a hill</span>
+  Ten people roll a ball down the same hill, each releasing it a millimetre apart. If all ten balls
+  end up in the same place, you can be confident about where the next one will go. If they scatter
+  across the whole field, you know the situation is genuinely uncertain. <b>The spread of the
+  ensemble is itself information</b> &mdash; it tells you how much to trust the forecast.</div>
+  <p>The source paper we adapt uses all <b>10 members</b>. This project has only the single
+  <b>control member</b>. That is a real limitation, honestly stated: it means we cannot use the
+  spread to judge how uncertain any particular forecast is, and instead have to estimate
+  uncertainty from how wrong we have been in the past. Section 7 returns to this.</p>
+
+  <h3>2.6 The constraint that shaped everything</h3>
+  <p>The inflow measurements end in 2014. The reforecast starts in mid-2004. We can only train and
+  test where <b>both</b> exist &mdash; so the usable record is <b>eleven monsoon seasons</b>.</p>
+<pre>
+  IMD rainfall     2003 --------------------------------- 2023
+  ECMWF forecast        2004 ----------------------------- 2023
+  Hirakud inflow   2003 ---------- 2014     <-- THE BINDING CONSTRAINT
+                        |--- usable: 11 monsoons ---|
+</pre>
+  <p>Eleven years is not much. Rainfall forecasts are also only available during the monsoon months
+  (June to September), giving 31 forecast start dates per year, or <b>339 in total</b>. Everything
+  that follows &mdash; especially the choice of how to test the models &mdash; is a response to
+  having this little data.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h3>2.7 How do you test a model fairly? (and what &ldquo;overfitting&rdquo; means)</h3>
+  <p>This section explains a method rather than a result, but without it none of the numbers later
+  in this document mean anything.</p>
+  <p>An AI model learns by looking at examples. The danger is that instead of learning the general
+  rule, it simply <b>memorises</b> the examples it was shown.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the student who memorised the answer key</span>
+  A student is given last year's exam paper with answers to study. Come the real exam, if the
+  questions are identical, they score 100&nbsp;%. If the questions are new, they score badly &mdash;
+  because they never learned the subject, only the answer key.<br><br>
+  This is <b>overfitting</b>. To catch it, you must test on questions the model has genuinely never
+  seen. Testing a model on data it trained on is like grading the student on the paper they
+  memorised: the score is meaningless.</div>
+  <p>The standard fix is to split your data: train on part, test on the rest. But with only eleven
+  years, holding out one year leaves you with a test based on a single monsoon &mdash; and monsoons
+  differ enormously from one another. You might get lucky.</p>
+
+  <h4>Leave-one-year-out</h4>
+  <p>So instead we do this <b>eleven times over</b>:</p>
+<pre>
+  Round 1:  train on 2005..2014          test on 2004
+  Round 2:  train on 2004, 2006..2014    test on 2005
+  Round 3:  train on 2004,2005,2007..14  test on 2006
+     ...                                    ...
+  Round 11: train on 2004..2013          test on 2014
+
+  Every year gets a turn as the unseen test year.
+  The model is rebuilt FROM SCRATCH each round.
+</pre>
+  <p>This is called <b>leave-one-year-out</b> cross-validation, abbreviated <b>LOYO</b>. A
+  prediction made by a model that never saw that year is called <b>out-of-fold</b>. Every single
+  number in this document is out-of-fold.</p>
+  <p>Crucially, it is not only the main model that gets rebuilt each round &mdash; the rainfall
+  sharpener, the data scaling factors, and the seasonal averages are all recomputed using only that
+  round's training years. If any one of them had peeked at the test year, the scores would be
+  quietly inflated.</p>
+
+  <div class="box warn"><span class="lbl">Why this mattered enormously here &mdash; a real example</span>
+  Early in the project, the year <b>2014</b> was used as the single test year. It later turned out
+  that 2014 was <b>the most predictable of all eleven monsoons</b>. Testing on it alone:
+  <ul style="margin-top:1.5mm;margin-bottom:0">
+    <li>overstated the rainfall-sharpening skill by roughly <b>two times</b>;</li>
+    <li><b>selected the wrong model</b> &mdash; a method that looked good on 2014 turned out to
+        fail badly on 2009 when properly tested;</li>
+    <li>and gave the wrong answer about how many days ahead the system is useful.</li>
+  </ul>
+  Every claim in this document that survived proper cross-validation had a plausible-looking
+  single-year version that did not.</div>
+
+  <h3>2.8 Six mistakes that had to be fixed first</h3>
+  <p>This project inherited an earlier version of the analysis. Before any result could be
+  believed, six errors had to be found and corrected. Each one had made the system <i>look</i>
+  better than it was. They are listed here because understanding them is more instructive than
+  hiding them.</p>
+  <table>
+    <tr><th style="width:34%">The mistake</th><th>What it meant, in plain terms</th></tr>
+    <tr><td>Rainfall totals were never converted to daily amounts</td>
+        <td>The forecast reports rain <i>accumulated since the start</i>. Using that directly means
+        day 10's number includes all the rain from days 1&ndash;9. The model was being fed running
+        totals as if they were daily values.</td></tr>
+    <tr><td>Sea cells were filled with zero</td>
+        <td>Six of twenty-five target boxes were ocean, with no land rainfall. Setting them to zero
+        gave the model six boxes it could always get exactly right &mdash; free marks that inflated
+        the score by a quarter.</td></tr>
+    <tr><td>The data was split randomly</td>
+        <td>Because one calendar day is forecast by several different forecast runs, a random split
+        put the <i>same day</i> in both the training and testing sets. The model had effectively
+        seen the answers.</td></tr>
+    <tr><td>Scaling was computed before splitting</td>
+        <td>The averages used to normalise the data were calculated over <i>all</i> the data,
+        including the test years. A small leak, but a real one.</td></tr>
+    <tr><td>The fine rainfall map was thinned to 25 points</td>
+        <td>The target was reduced to the same coarseness as the input, so <b>no downscaling was
+        actually happening at all</b>. The model was being scored on a task it was not performing.</td></tr>
+    <tr><td>Past-rainfall features were measured from the wrong date</td>
+        <td>&ldquo;Yesterday's rainfall&rdquo; was computed relative to the forecast <i>target</i>
+        date, not the date the forecast was issued. At a 17-day lead, &ldquo;yesterday&rdquo; was
+        actually 16 days in the <b>future</b> &mdash; information no real forecaster could have.</td></tr>
+  </table>
+  <div class="box key"><span class="lbl">Why an apparently worse result is the better one</span>
+  After these fixes, the headline accuracy score fell from an impressive-looking 0.87 to a modest
+  0.105. <b>This is not a worse result. It is the first honest one.</b> The 0.87 was measuring
+  leaks and free marks. Anything reported from here on has survived all six corrections.</div>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>3 &nbsp; Stage 1 &mdash; Sharpening the Rainfall Forecast</h2>
+
+  <h3>3.1 What is &ldquo;statistical downscaling&rdquo;?</h3>
+  <p>Statistical downscaling means: <b>learn, from historical data, the relationship between what
+  the coarse model predicted and what actually happened locally &mdash; then apply that learned
+  relationship to new forecasts.</b></p>
+  <p>It does two jobs at once:</p>
+  <ol>
+    <li><b>Resolution enhancement</b> &mdash; turning one 166&nbsp;km value into thirty-six
+        25&nbsp;km values.</li>
+    <li><b>Bias correction</b> &mdash; fixing systematic errors, such as &ldquo;this model always
+        over-predicts rain on the northern slopes in July.&rdquo;</li>
+  </ol>
+  <p>The alternative is <b>dynamic downscaling</b>: re-running actual atmospheric physics at fine
+  scale. It is more principled but vastly more expensive in computing time. Statistical downscaling
+  is cheap enough to run every day on an ordinary machine, which is what makes it practical.</p>
+
+  <h3>3.2 What is a neural network, in one paragraph?</h3>
+  <p>A neural network is a large mathematical function with millions of adjustable numbers, called
+  <b>weights</b>. You show it an input and it produces an output. At first the output is nonsense,
+  because the weights are random. You then measure how wrong it was, and nudge every weight
+  slightly in the direction that would have made it less wrong. Repeat this millions of times over
+  thousands of examples, and the weights settle into values that produce good outputs. That
+  nudging process is called <b>training</b>, and the measure of wrongness is called the
+  <b>loss function</b>.</p>
+
+  <h3>3.3 Why a CNN specifically?</h3>
+  <p><b>CNN</b> stands for <b>Convolutional Neural Network</b>. It is the architecture designed for
+  grid-shaped data where the spatial neighbourhood matters &mdash; the same family of model used
+  for recognising faces in photographs.</p>
+  <p>The insight is simple but powerful: <b>rain in a valley is not caused only by the atmosphere
+  directly above that valley.</b> It is caused by the wind, moisture and pressure pattern across
+  the whole surrounding region &mdash; moisture blowing in from the Bay of Bengal, a low-pressure
+  system sitting to the west. A method that looks only at the local rainfall number is blind to all
+  of that. A CNN can look at the neighbourhood.</p>
+
+  <h3>3.4 What is a convolution, and what is a &ldquo;kernel&rdquo;?</h3>
+  <p>A <b>kernel</b> (also called a filter) is a small grid of learnable weights &mdash; here,
+  3 &times; 3. It slides across the input, and at each position multiplies each of its nine weights
+  by the nine values underneath, then adds them up. That single number becomes one pixel of the
+  output. Slide it everywhere and you get a whole new grid.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the pattern-detector stencil</span>
+  Think of a kernel as a small stencil that lights up when it sees a particular pattern. One kernel
+  might learn to respond to &ldquo;moist air on the left, dry air on the right&rdquo; &mdash; a
+  moisture front. Another might respond to a sharp pressure gradient. Each kernel becomes a
+  specialist in one atmospheric fingerprint.<br><br>
+  The crucial part: <b>nobody programs these stencils by hand.</b> The network discovers which
+  patterns are worth detecting, purely from the training data.</div>
+
+  <h3>3.5 What goes into the model</h3>
+  <p>For each fine 0.25&deg; box we want to predict, the network is shown a <b>3 &times; 3 patch</b>
+  of coarse boxes centred on it &mdash; the target's neighbourhood.</p>
+  <p>Why 3 &times; 3? The source paper tested 1&times;1, 3&times;3, 5&times;5 and 7&times;7.
+  Too small (1&times;1) and you lose the surrounding context, which is the whole advantage a CNN
+  offers. Too large (7&times;7) and you drag in irrelevant weather from ~580&nbsp;km away, adding
+  noise and encouraging memorisation. 3&times;3 was the sweet spot.</p>
+  <p>At each of those nine boxes the model reads several <b>predictors</b> &mdash; different
+  measured quantities:</p>
+  <table>
+    <tr><th style="width:30%">Predictor</th><th>What it is and why it helps</th></tr>
+    <tr><td>Total precipitation</td><td>The model's own rainfall guess &mdash; the thing we are correcting</td></tr>
+    <tr><td>Surface elevation</td><td>How high the land is. The only input that never changes; it tells the network about terrain, and mountains force air upward, which makes rain</td></tr>
+    <tr><td>Temperature at 2&nbsp;m</td><td>Warm air holds more moisture</td></tr>
+    <tr><td>Wind, east&ndash;west and north&ndash;south</td><td>Which direction moisture is being carried from</td></tr>
+    <tr><td>Mean sea-level pressure</td><td>Identifies low-pressure systems, which bring rain</td></tr>
+    <tr><td>Cloud cover</td><td>Directly related to whether rain is falling</td></tr>
+    <tr><td>Solar radiation, heat fluxes</td><td>How much energy is driving evaporation and convection</td></tr>
+  </table>
+  <div class="box warn"><span class="lbl">An honest gap in this implementation</span>
+  The source paper uses <b>19</b> predictors, not our 10. The ones we are missing are all
+  <b>upper-air</b> measurements &mdash; wind, humidity, temperature and pressure-surface height
+  taken high in the atmosphere, at three altitudes (roughly 1.5&nbsp;km, 5.5&nbsp;km and
+  12&nbsp;km up).<br><br>
+  Why that matters: weather is three-dimensional. The low level carries the moisture that becomes
+  rain; the middle level shows where storm systems are <i>heading</i>; the top level is the jet
+  stream, which organises everything below it. <b>It is like giving a doctor an X-ray from three
+  angles instead of one.</b> Section 8 explains why obtaining these is the single most valuable
+  next step for this project.</div>
+
+  <h3>3.6 What is the &ldquo;vanishing gradient&rdquo; problem, and what is a ResNet block?</h3>
+  <p>Recall that a network learns by measuring its error and pushing a correction signal
+  <i>backwards</i> through its layers, telling each weight how to adjust. That signal is called the
+  <b>gradient</b>.</p>
+  <p>The problem: at every layer the signal gets multiplied by numbers usually smaller than one.
+  Multiply repeatedly and it shrinks towards zero. By the time it reaches the earliest layers there
+  is nothing left, and those layers simply stop learning.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the whisper down the line</span>
+  Imagine thirty people in a line passing a whispered message backwards. Each person garbles it
+  slightly and speaks a little more softly. By the time it reaches the first person there is nothing
+  but a hiss. <b>Person 1 never finds out what to fix.</b></div>
+  <p>A <b>ResNet block</b> (short for &ldquo;residual network&rdquo;) solves this with a <b>skip
+  connection</b>: the input to the block is added directly to its output, bypassing the layers
+  entirely.</p>
+<pre>
+                 +-------------------------------------------+
+                 |            SKIP CONNECTION                |
+   input  -------+                                           |
+     |                                                       v
+     +---> [ Conv 3x3 ] --> [ ELU ] --> [ Conv 3x3 ] ---> (  +  ) ---> output
+                                                          ADD
+</pre>
+  <p>This has two effects. First, <b>the gradient gets a shortcut home</b> &mdash; the correction
+  signal travels back along the skip path without being multiplied down. The whisper now has a
+  megaphone line running directly to person 1. Second, the block only has to learn the
+  <b>correction</b>, not the whole mapping. If the best thing it can do is nothing at all, it can
+  simply learn weights near zero and pass the input through untouched. That is why adding depth
+  can never hurt, and why deep networks became trainable at all.</p>
+
+  <h3>3.7 Why is there an &ldquo;activation function&rdquo;?</h3>
+  <p>Between convolution layers sits a small nonlinear function &mdash; here, <b>ELU</b>
+  (Exponential Linear Unit). Without one, stacking layers would be pointless: a chain of linear
+  operations collapses mathematically into a single linear operation, and the network could never
+  represent the genuinely nonlinear physics of rainfall. ELU adds the necessary nonlinearity while
+  allowing smooth negative outputs, which keeps gradients flowing rather than letting parts of the
+  network go permanently silent.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h3>3.8 Teaching the network where it is</h3>
+  <p>Here is a subtlety that is easy to miss. Because the <i>same</i> network is applied to every
+  box in the basin, by default it would treat an upland box identically to a valley box &mdash;
+  given the same atmospheric inputs, it would predict the same rain. That is physically wrong.</p>
+  <p>The fix is an <b>embedding layer</b>: the box's grid position is converted into learnable
+  location features, which are merged with the network's output just before the final layers.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the postcode</span>
+  It is the difference between a weather app that gives everyone in the country the same forecast,
+  and one that knows your postcode. The embedding is the network's postcode, letting a single
+  shared model learn location-specific behaviour instead of being forced into one global rule.</div>
+
+  <h3>3.9 The loss function &mdash; how we stopped the AI ignoring storms</h3>
+  <p>Recall that the <b>loss function</b> is the measure of wrongness the network tries to
+  minimise. The obvious choice is <b>Mean Squared Error (MSE)</b>: take the difference between
+  prediction and truth, square it, average over everything.</p>
+  <p>But training a rainfall model with plain MSE teaches it a cowardly strategy. Most days are dry
+  or lightly rainy; extreme storms are rare. Predicting something close to the average every single
+  day produces a low average error and gets rewarded.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; answering &ldquo;C&rdquo; to every question</span>
+  A student who answers &ldquo;C&rdquo; to every multiple-choice question scores respectably and
+  never has to think. An MSE-trained rainfall model behaves the same way &mdash; it hedges towards
+  the middle and never commits to predicting a storm.<br><br>
+  <b>For flood forecasting this is a catastrophic failure disguised as good performance.</b> The
+  score looks fine. The model is useless for exactly the days that matter.</div>
+
+  <h4>The fix: adding a Threat Score</h4>
+  <p>The solution is to add a second term to the loss that specifically punishes missing heavy
+  rain. That term is built from the <b>Threat Score</b>, a standard forecasting measure:</p>
+<pre>
+  loss  =  MSE  +  b * (1 - TS)
+
+                    H                 H = HITS         we said heavy, it was heavy
+  TS  =  ---------------------        F = FALSE ALARMS we said heavy, it wasn't
+           H  +  F  +  M              M = MISSES       it was heavy, we didn't say so
+
+  b = how much we care about extremes relative to everyday accuracy
+</pre>
+  <p>Reading this intuitively: <b>the MSE term keeps ordinary rainfall accurate; the Threat Score
+  term punishes the model every time it misses a storm.</b> The &ldquo;always answer C&rdquo;
+  strategy stops being profitable, and the model is forced to commit.</p>
+
+  <h4>One mathematical obstacle, and the trick that solves it</h4>
+  <p>Counting hits and misses requires a yes/no decision: was this heavy rain or not? That is a
+  <b>step function</b> &mdash; it jumps abruptly from 0 to 1. Step functions have zero slope
+  everywhere, and a network learns by following slopes. There is nothing to follow.</p>
+  <p>The fix is to replace the hard yes/no with a <b>sigmoid</b>, a smooth S-shaped curve that
+  slides gradually from 0 to 1.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the light switch and the dimmer</span>
+  A hard threshold is a light switch: abruptly on or off, telling you nothing about how close you
+  were. A sigmoid is a dimmer &mdash; it tells the model &ldquo;you were nearly there, push a
+  little harder.&rdquo; That information about near-misses is precisely what learning requires.</div>
+  <p>One more detail worth noting: what counts as &ldquo;heavy rain&rdquo; is defined
+  <b>separately for every box</b>, as that box's own 90th-percentile rainfall. So heavy means
+  something appropriately different in a dry upland box than in a wet valley box.</p>
+
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h3>3.10 The whole of Stage 1, in one diagram</h3>
+<pre>
+================================================================================
+                       RAINFALL SHARPENING (Stage 1)
+                 applied in a loop to every 0.25-degree box
+================================================================================
+
+  STEP 1: GATHER INPUTS FOR ONE TARGET BOX
+  +-----------------------------------------------------------+
+  |   3 x 3 patch of coarse ECMWF boxes around the target      |
+  |        +-------+-------+-------+                           |
+  |        |  NW   |   N   |  NE   |   at each box, 10 fields: |
+  |        +-------+-------+-------+     rainfall, elevation,  |
+  |        |   W   | TARGET|   E   |     temperature, wind,    |
+  |        +-------+-------+-------+     pressure, cloud,      |
+  |        |  SW   |   S   |  SE   |     radiation, heat flux  |
+  |        +-------+-------+-------+                           |
+  +-----------------------------------------------------------+
+                              |
+                              v
+  +-----------------------------------------------------------+
+  |  RESNET BLOCK 1   64 pattern-detectors   (with skip)       |
+  |  RESNET BLOCK 2   32 pattern-detectors   (with skip)       |
+  |  RESNET BLOCK 3   16 pattern-detectors   (with skip)       |
+  |                                                            |
+  |  Start by detecting many simple patterns, then progressively|
+  |  distil them into fewer, more meaningful ones.             |
+  +-----------------------------------------------------------+
+                              |
+                    +---------+---------+
+                    |                   |
+                [FLATTEN]        [EMBEDDING LAYER]
+              2-D maps into      grid position into
+              a 1-D list         latitude / longitude
+                    |                   |
+                    +---------+---------+
+                              v
+                    [ CONCATENATE ]  "what the weather looks like"
+                              |      + "where I am"
+                              v
+                    [ DENSE ] -> [ DENSE ] -> rainfall for ONE box
+                              |
+                              v
+        REPEAT FOR EVERY BOX  ->  FULL SHARPENED RAINFALL MAP
+
+  TRAINED WITH:  loss = MSE + b * (1 - TS)
+                 Adam optimiser, early stopping
+================================================================================
+</pre>
+  <p class="small"><b>Early stopping</b> means: keep checking performance on data the model is not
+  learning from, and stop training the moment that performance stops improving. It is the standard
+  guard against the memorisation problem described in &sect;2.7.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>4 &nbsp; Stage 2 &mdash; Turning Rainfall into Inflow</h2>
+
+  <h3>4.1 Why this is genuinely difficult</h3>
+  <p>Sharpened rainfall is only half the chain. We now need to answer: given that this much rain
+  falls over the catchment, how much water passes into the reservoir on each of the next 17 days?</p>
+  <p>This is called <b>rainfall&ndash;runoff modelling</b>, and it is hard for three reasons:</p>
+  <ol>
+    <li><b>Only a fraction of rain becomes river flow.</b> Some evaporates, some is drunk by
+        plants, some soaks deep into groundwater.</li>
+    <li><b>That fraction is not fixed</b> &mdash; it depends on how wet the soil already is (the
+        sponge, again).</li>
+    <li><b>Water arrives late.</b> Rain falling 300&nbsp;km upstream takes days to travel down to
+        the dam.</li>
+  </ol>
+
+  <h3>4.2 What is a transformer?</h3>
+  <p>A <b>transformer</b> is a type of neural network built for <b>sequences</b> &mdash; ordered
+  lists of things, like words in a sentence or days in a time series. It is the architecture behind
+  modern language models.</p>
+  <p>Its defining mechanism is called <b>attention</b>. Rather than processing a sequence strictly
+  in order and carrying a running summary, attention lets <b>every output position look directly at
+  every input position</b> and decide, for itself, which ones matter.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the researcher and the filing cabinet</span>
+  An older type of model reads a sequence like someone reading a book cover to cover, trying to
+  remember everything in one running summary. By chapter 30 the details of chapter 2 have blurred.
+  <br><br>
+  A transformer works like a researcher with the whole filing cabinet open at once. Asked
+  &ldquo;what will the river do on day 12?&rdquo;, it can reach directly for the day-12 rainfall
+  file, and also the file on how wet the soil was three weeks ago, <b>without</b> having to pass
+  that information through every intervening day. That direct reach is attention.</div>
+
+  <h3>4.3 What makes &ldquo;FutureTST&rdquo; different?</h3>
+  <p>The model we use is called <b>FutureTST</b>, and the clue is in the name. Most forecasting
+  models look only at the <b>past</b> &mdash; the history of the river and the weather &mdash; and
+  extrapolate forward.</p>
+  <p>FutureTST also reads the <b>future</b>: the forecast rainfall sequence over the days it is
+  predicting.</p>
+  <p>This sounds like cheating, but it is not. We genuinely have a rainfall forecast for the next
+  17 days &mdash; that is what Stage 1 produced. What we do not know is how much of that rain will
+  reach the dam, and when. So the model is given the future weather and asked to work out the
+  future <i>river</i>.</p>
+  <div class="box key"><span class="lbl">Why this is the right design</span>
+  Attention can route the fact &ldquo;40&nbsp;mm of rain is expected on day 9&rdquo; <b>directly</b>
+  into the day-9 river prediction. An older model would have to carry that fact forward through
+  every day from 1 to 9, degrading it along the way. This is precisely why the model can stay useful
+  at long lead times &mdash; and Section 6 shows measurable evidence that it does.</div>
+
+  <h3>4.4 What the model actually sees</h3>
+<pre>
+================================================================================
+                  INFLOW PREDICTION (Stage 2)
+================================================================================
+
+   THE PAST (64 days before the forecast is issued)
+   +---------------------------------------------------+
+   |  measured inflow into the dam, day by day          |
+   |  measured rainfall over the catchment, day by day  |
+   |  temperature, sunlight, wind, pressure             |
+   |                                                    |
+   |  --> this is how the model learns how wet the      |
+   |      catchment already is (the "sponge" state)     |
+   +---------------------------------------------------+
+                          |
+                          v
+              +------------------------+
+              |  ENCODER               |   builds a compact summary
+              |  reads all the weather |   of the weather situation,
+              |  past AND future       |   past and future together
+              +------------------------+
+                          |
+                     "the memory"
+                          |
+   THE FUTURE (17 days)   v
+   +---------------------------------------------------+
+   |  DECODER                                          |
+   |  17 questions, one per day:                       |
+   |     "what will inflow be on day 1?"               |
+   |     "what will inflow be on day 2?"  ...          |
+   |                                                   |
+   |  Each question looks directly into the memory     |
+   |  and pulls out what it needs.  <-- CROSS-ATTENTION|
+   +---------------------------------------------------+
+                          |
+                          v
+            INFLOW FORECAST, days 1 to 17 (cumecs)
+================================================================================
+</pre>
+  <p>The two halves have names worth knowing. The <b>encoder</b> reads the input and builds an
+  internal summary. The <b>decoder</b> produces the output, and <b>cross-attention</b> is the
+  mechanism by which each of its 17 questions reaches back into the encoder's summary.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the briefing and the questions</span>
+  The encoder is an analyst who reads every weather report and writes a detailed briefing. The
+  decoder is seventeen different officials, each asking one question: &ldquo;what happens on my
+  day?&rdquo; Cross-attention is each official being allowed to read the <b>whole briefing</b> and
+  pick out the parts relevant to their own day &mdash; rather than being handed a summary of a
+  summary passed down a chain.</div>
+
+  <h3>4.5 How the two stages connect</h3>
+  <p>The two research papers this project builds on do not overlap &mdash; they are neighbouring
+  stages of one chain. Paper 1 <b>ends</b> by producing sharpened rainfall. Paper 2 <b>begins</b>
+  by needing forecast rainfall from somewhere. <b>Paper 1's output is Paper 2's input.</b></p>
+<pre>
+    ECMWF forecast, 166 km boxes
+             |
+             |   PAPER 1  (Dong et al., 2025) : the CNN sharpener
+             v
+    Sharpened rainfall, 25 km boxes
+             |
+             |   averaged over the 224 boxes that make up the catchment
+             v
+    One rainfall number per day for the whole catchment
+             |
+             |   PAPER 2  (Ambika et al., 2025) : the FutureTST transformer
+             v
+    Inflow at Hirakud Dam, days 1 to 17
+</pre>
+  <div class="box key"><span class="lbl">Why combining them is a real contribution, not just plumbing</span>
+  Each paper's stated weakness is the other's strength.<br><br>
+  Paper 1's authors found that better rainfall did not help much, because <i>their</i> river model
+  was too rigid to exploit it. Paper 2's authors had an excellent river model but fed it
+  <b>raw, unsharpened</b> forecasts, and blamed rainfall errors for their limits.<br><br>
+  <b>Paper 1 fixes Paper 2's input. Paper 2 fixes Paper 1's model.</b></div>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h3>4.6 Two mistakes we made, and what fixing them taught us</h3>
+  <p>The first version of Stage 2 performed poorly, and the conclusion drawn was &ldquo;there is
+  not enough data for a transformer to work here.&rdquo; <b>That conclusion was wrong</b>, and
+  discovering why was one of the most valuable parts of the project.</p>
+  <table>
+    <tr><th style="width:16%"></th><th style="width:42%">What we did at first</th><th>What the paper actually does</th></tr>
+    <tr><td><b>Training<br>examples</b></td>
+        <td>Used only the 341 dates on which a forecast was issued &mdash; throwing away
+        92&nbsp;% of the available record.</td>
+        <td>Train on <b>every day</b> using measured weather, giving <b>4,302</b> examples instead
+        of 341. Nearly thirteen times more.</td></tr>
+    <tr><td><b>Model<br>shape</b></td>
+        <td>A single block reading past and future glued together &mdash; no separate decoder.</td>
+        <td>A proper <b>encoder&ndash;decoder</b> with cross-attention, exactly as in the paper's
+        own diagram.</td></tr>
+  </table>
+  <div class="box key"><span class="lbl">The lesson, stated plainly</span>
+  &ldquo;Not enough data&rdquo; was not a fact about the Mahanadi basin. It was a fact about
+  <b>how we had set up the problem</b>. We had created our own data shortage by only training on
+  forecast days, and we had removed the very mechanism the paper credits for its performance. Both
+  errors were ours. Fixing them changed the result completely.</div>
+
+  <h3>4.7 A subtle problem: trained on truth, used on forecasts</h3>
+  <p>Following the source paper, the model is trained on <b>measured</b> weather &mdash; what
+  actually fell. This gives us far more training examples, which is exactly what a data-starved
+  model needs.</p>
+  <p>But there is a catch, and it is the central difficulty of the whole project.</p>
+  <p>During training, the future rainfall the model sees is <b>true</b>. So it learns to trust that
+  information completely. In real use, the future rainfall is a <i>forecast</i>, and at day 15 that
+  forecast is only weakly related to reality. The model does not know this. It reads a wrong
+  rainfall number with total confidence and converts it into a wrong river prediction.</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the trainee who only ever saw perfect data</span>
+  Imagine training a junior engineer using instruments that are always perfectly calibrated. They
+  learn, sensibly, to trust the dial completely. Now send them to a field site where the day-15
+  gauge is known to be badly unreliable. They will keep trusting the dial &mdash; and confidently
+  make bad decisions. The problem is not their competence. It is that <b>nobody taught them which
+  instruments to doubt</b>.</div>
+  <p>Two remedies are tested in this project:</p>
+  <ul>
+    <li><b>Fine-tuning</b> &mdash; after training on measured weather, continue training briefly on
+    the smaller set of real forecast examples, at a very low learning rate. This lets the model
+    adjust how much it leans on its rainfall input without destroying the rainfall&ndash;runoff
+    relationship it already learned. (Fine-tuning in general means: take an already-trained model
+    and adapt it to a related task with a small amount of extra training.)</li>
+    <li><b>Lead-dependent noise training</b> &mdash; deliberately corrupt the training rainfall by
+    exactly as much as the real forecast is wrong at each day, so the model learns from the start
+    to trust day 2 and doubt day 15.</li>
+  </ul>
+  <p>Section 6 reports how well each works.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>5 &nbsp; How Do We Know If It Works?</h2>
+  <p>Before any results, we need to understand the scoring rules. A number like
+  &ldquo;NSE +0.34&rdquo; means nothing until you know what it is measuring and what counts as
+  good.</p>
+
+  <h3>5.1 The most important one: NSE</h3>
+  <p><b>NSE</b> stands for <b>Nash&ndash;Sutcliffe Efficiency</b>, and it is the standard score in
+  hydrology. It answers one question:</p>
+  <div class="box def"><span class="lbl">What NSE actually asks</span>
+  <b>&ldquo;Is this model better than just predicting the seasonal average every single day?&rdquo;</b>
+  <br><br>
+  That lazy strategy &mdash; ignore all information and predict the long-term average &mdash; is
+  the benchmark. NSE measures how much better you are than it.</div>
+  <table>
+    <tr><th style="width:16%">NSE value</th><th>What it means</th></tr>
+    <tr><td class="num"><b>1.0</b></td><td>Perfect. Every prediction exactly right.</td></tr>
+    <tr><td class="num"><b>0.7</b></td><td>Very good for a river forecast.</td></tr>
+    <tr><td class="num"><b>0.5</b></td><td>Generally regarded as satisfactory for daily flow.</td></tr>
+    <tr><td class="num"><b>0.0</b></td><td>Exactly as good as predicting the average &mdash; i.e. worthless.</td></tr>
+    <tr><td class="num"><b>below 0</b></td><td><b>Worse than</b> predicting the average. You would have been better off not building the model.</td></tr>
+  </table>
+  <p>NSE can go arbitrarily negative, which is why you occasionally see alarming numbers like
+  &minus;0.87 in cross-validation results.</p>
+
+  <div class="box warn"><span class="lbl">Why NSE is a harsh judge at long lead times</span>
+  NSE punishes errors in the <b>timing</b> of peaks very heavily. Suppose the model correctly
+  predicts a large flood, but places it on Tuesday when it actually arrived on Thursday. NSE
+  penalises this <b>twice</b> &mdash; once for predicting a flood on a quiet day, and once for
+  missing the flood on the day it happened. The model understood the situation and got the total
+  volume of water right, and NSE still scores it terribly.<br><br>
+  This is worth remembering when reading the long-lead results. It is also why the authors of Paper
+  1, facing the same issue, additionally report the error in <i>total</i> water volume &mdash;
+  which for a reservoir operator is arguably the more useful quantity anyway.</div>
+
+  <h3>5.2 R&sup2; &mdash; used for the rainfall stage</h3>
+  <p><b>R&sup2;</b> ("R squared") measures the fraction of the variation in the truth that the model
+  successfully explains. 1.0 is perfect; 0 means the model explains nothing; negative means it is
+  actively worse than a flat guess.</p>
+  <p>An R&sup2; of about 0.10 for daily rainfall in a single 25&nbsp;km box sounds low, and it is. But
+  the honest context is that raw ECMWF scores <b>&minus;0.136</b> on the same task, and Section 8
+  explains why roughly 0.1 is close to the physical ceiling given the information available.</p>
+
+  <h3>5.3 Correlation</h3>
+  <p><b>Correlation</b> measures whether two things rise and fall <i>together</i>, ignoring whether
+  the magnitudes match. It runs from &minus;1 to +1. A correlation of 0.6 between forecast and
+  observed catchment rainfall means the forecast reliably knows when wet spells are coming, even if
+  it gets the exact amounts wrong.</p>
+
+  <h3>5.4 KGE</h3>
+  <p><b>KGE</b> (Kling&ndash;Gupta Efficiency) is a companion to NSE that separates skill into three
+  parts: getting the <i>timing</i> right, getting the <i>variability</i> right, and getting the
+  <i>average level</i> right. It is quoted alongside NSE because a model can score well on one and
+  badly on another, and knowing which failed tells you what to fix.</p>
+
+  <h3>5.5 Two phrases you will see repeatedly</h3>
+  <table>
+    <tr><th style="width:26%">Phrase</th><th>Meaning</th></tr>
+    <tr><td><b>Out-of-fold</b></td><td>A prediction made by a model that never saw that year during training. Everything reported here is out-of-fold. See &sect;2.7.</td></tr>
+    <tr><td><b>Lead time</b> / <b>lead day</b></td><td>How far ahead the prediction is. &ldquo;Lead 12&rdquo; means we are predicting 12 days after the forecast was issued.</td></tr>
+    <tr><td><b>Median over 11 folds</b></td><td>We get 11 scores, one per test year. The median is the middle one &mdash; a more honest summary than the average, because one disastrous year cannot drag it around.</td></tr>
+    <tr><td><b>Pooled</b></td><td>All 11 years' predictions thrown into one pile and scored together, rather than year by year.</td></tr>
+  </table>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>6 &nbsp; The Results</h2>
+  <p class="small">Every figure below is out-of-fold, tested across all eleven monsoons.</p>
+
+  <h3>6.1 Did sharpening the rainfall work?</h3>
+  <p>Yes, clearly.</p>
+  <table>
+    <tr><th>Method</th><th class="num">R&sup2; (typical year)</th><th class="num">Years it won</th><th>Verdict</th></tr>
+    <tr><td><b>The CNN sharpener</b></td><td class="num good">0.1047</td><td class="num"><b>9 of 11</b></td><td>selected</td></tr>
+    <tr><td>A simpler machine-learning method</td><td class="num">0.0785</td><td class="num">2 of 11</td><td>superseded</td></tr>
+    <tr><td>Raw ECMWF, no sharpening</td><td class="num bad">&minus;0.136</td><td class="num">&mdash;</td><td>worse than a flat guess</td></tr>
+  </table>
+  <p>Read the last row carefully. The raw global forecast, used directly for a single 25&nbsp;km
+  box, is <b>worse than useless</b> &mdash; you would do better ignoring it. Sharpening turns
+  something actively misleading into something genuinely informative. That is the whole value of
+  Stage 1.</p>
+  <p>There is also a helpful effect when we average over the catchment. Individual box errors are
+  largely independent, so they partly cancel. Correlation with reality for
+  <b>catchment-average</b> rainfall is <b>0.59</b> after sharpening, against <b>0.41</b> raw
+  &mdash; much healthier than the per-box figure suggests.</p>
+  <div class="box warn"><span class="lbl">A cautionary tale about testing</span>
+  On the single year 2014, the simpler method scored 0.142 and the CNN 0.118 &mdash; the simpler
+  method looked <b>better</b>. Tested properly across all eleven years, the ranking
+  <b>reverses decisively</b>. Had we trusted the single-year test, we would have shipped the wrong
+  model. This is the concrete cost of the shortcut described in &sect;2.7.</div>
+
+  <h3>6.2 The inflow forecast: a ceiling and a collapse</h3>
+  <p>Three versions of Stage 2 were tested. The differences between them are the most informative
+  result in this project.</p>
+  <table>
+    <tr><th style="width:44%">What the model was given</th><th class="num">Typical NSE</th><th>Meaning</th></tr>
+    <tr><td><b>Measured weather</b> &mdash; we tell it exactly what fell</td>
+        <td class="num good">+0.577</td>
+        <td>Not a forecast. This is the <b>ceiling</b>: the best possible if weather were known.</td></tr>
+    <tr><td><b>Forecast weather</b>, no adaptation</td><td class="num">+0.103</td>
+        <td>Barely better than guessing the average.</td></tr>
+    <tr><td><b>Forecast weather + fine-tuning</b></td><td class="num good">+0.288</td>
+        <td>The operational number. Recovers about half the loss.</td></tr>
+  </table>
+  <p>Compare the first and second rows. <b>Same model. Same river. Same 17 days. The only thing
+  that changed is whether the rainfall was true or forecast</b> &mdash; and the score fell from
+  +0.577 to +0.103.</p>
+
+  <h3>6.3 The most revealing table in this document</h3>
+  <p>Now split those results by how far ahead we are predicting.</p>
+  <table>
+    <tr><th>Days ahead</th><th class="num">Measured weather</th><th class="num">Forecast weather</th><th class="num">+ fine-tuning</th></tr>
+    <tr><td>1&ndash;3 days</td><td class="num">+0.538</td><td class="num">+0.498</td><td class="num">+0.512</td></tr>
+    <tr><td>4&ndash;7 days</td><td class="num">+0.545</td><td class="num">+0.350</td><td class="num">+0.415</td></tr>
+    <tr><td>8&ndash;12 days</td><td class="num">+0.587</td><td class="num">&minus;0.000</td><td class="num">+0.225</td></tr>
+    <tr><td>13&ndash;17 days</td><td class="num good">+0.615</td><td class="num bad">&minus;0.229</td><td class="num">+0.113</td></tr>
+  </table>
+  <div class="box key"><span class="lbl">Read the first column downwards &mdash; this is the proof the design works</span>
+  With measured weather, the model gets <b>better</b> as it looks further ahead: +0.538, +0.545,
+  +0.587, <b>+0.615</b>. Every other model in this project gets <i>worse</i> with distance.<br><br>
+  Why does this prove something? A model that is better at 17 days than at 3 days <b>cannot be
+  relying on yesterday's flow</b> &mdash; that information is useless at 17 days. It can only be
+  reading the future rainfall sequence. This is exactly what cross-attention (&sect;4.4) was
+  supposed to enable, and it is direct evidence that the mechanism is doing its job.</div>
+  <div class="box warn"><span class="lbl">Now read the second column &mdash; this is the whole problem</span>
+  Swap measured weather for forecast weather and +0.615 becomes <b>&minus;0.229</b>. The rise turns
+  into a collapse.<br><br>
+  The reason is exactly the trainee-with-perfect-instruments problem from &sect;4.7. Precisely
+  where the model's greatest strength lies &mdash; its ability to read future rainfall directly
+  &mdash; it is most exposed when that rainfall is wrong. <b>Its strength and its vulnerability
+  are the same mechanism.</b></div>
+  <p>Fine-tuning repairs much of the damage, lifting 13&ndash;17 days from &minus;0.229 back to a
+  positive +0.113. It cannot repair all of it, because no amount of clever training can invent
+  rainfall information that was never in the forecast.</p>
+
+  <h3>6.4 Something that was tried and did <i>not</i> work</h3>
+  <p>A standard technique called <b>quantile mapping</b> reshapes a forecast so its overall
+  statistics match observed reality &mdash; if the forecast never predicts more than 30&nbsp;mm but
+  reality sometimes reaches 60&nbsp;mm, quantile mapping stretches the forecast to match.</p>
+  <p>It was implemented and tested. <b>It made things worse</b> (+0.136 against +0.288 for
+  fine-tuning alone).</p>
+  <div class="box ana"><span class="lbl">Analogy &mdash; turning up the volume on static</span>
+  If a radio signal is mostly noise, turning up the volume does not help you hear the music. It
+  just gives you louder noise.<br><br>
+  Quantile mapping restores the <i>size</i> of extreme rainfall values without knowing <i>when</i>
+  they should occur. Applied to a forecast that is only weakly correlated with reality, it adds
+  amplitude without adding information &mdash; producing confident predictions of storms on the
+  wrong days. Negative results like this are worth reporting: they save the next person the effort.</div>
+
+  <h3>6.5 Saying how confident we are</h3>
+  <p>A single number ("8,400 cumecs on Thursday") is less useful to an operator than a range
+  ("between 5,100 and 12,600, with 80&nbsp;% confidence"). We produce these using
+  <b>conformal prediction</b>, a method that builds ranges with a guaranteed hit rate by measuring
+  how wrong the model has been on data it did not train on.</p>
+  <p>The test is simple: if we claim 80&nbsp;% confidence, does the truth actually land inside the
+  range 80&nbsp;% of the time?</p>
+  <table>
+    <tr><th>We claim</th><th class="num">Calibrated on 2 years</th><th class="num">Calibrated on all 11</th></tr>
+    <tr><td>89&nbsp;% confidence</td><td class="num">86.0&nbsp;%</td><td class="num good">89.6&nbsp;%</td></tr>
+    <tr><td>80&nbsp;% confidence</td><td class="num bad">69.2&nbsp;%</td><td class="num good">81.9&nbsp;%</td></tr>
+    <tr><td>50&nbsp;% confidence</td><td class="num">46.9&nbsp;%</td><td class="num good">50.9&nbsp;%</td></tr>
+  </table>
+  <p>The middle column is dangerous: claiming 80&nbsp;% confidence while being right only
+  69&nbsp;% of the time means an operator who trusts your range gets caught out far more often than
+  they expect. Using all eleven years to calibrate fixes it almost exactly. The lesson was that the
+  ranges were not the wrong <i>shape</i> &mdash; we simply had not used enough years to measure them.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>7 &nbsp; What Does Not Work, and Why</h2>
+  <p>A trustworthy report states its own boundaries before anyone has to ask. These are ours.</p>
+
+  <h3>7.1 The system underestimates the biggest floods</h3>
+  <p>This is the most serious limitation, and it must not be buried.</p>
+  <p>The largest flood in 2014 reached <b>22,308 cumecs</b>. Our forecast, seven days ahead, said
+  <b>6,274 cumecs</b> &mdash; about 28&nbsp;% of what actually arrived. Fed into a release
+  calculation, that would have sized the operation for a flood roughly <b>3.6 times too small</b>,
+  and the reservoir would have overtopped uncontrollably.</p>
+  <div class="box warn"><span class="lbl">Stated as plainly as possible</span>
+  <b>This system is not currently trustworthy for extreme flood decisions.</b> It is useful for
+  routine operations and moderate flows. A separate check confirms this independently: the system's
+  skill at predicting whether flow will exceed the most extreme threshold is
+  <b>slightly negative</b>, meaning it adds nothing over guessing at that level.</div>
+  <p>Why does this happen? It is the &ldquo;answering C&rdquo; problem from &sect;3.9, resurfacing
+  further down the chain. Models trained to minimise average error naturally retreat towards
+  moderate predictions when they are uncertain &mdash; and at seven days ahead, they are uncertain.
+  The threat-score loss fights this in Stage 1, but it does not eliminate it.</p>
+
+  <h3>7.2 We only have one forecast, not ten</h3>
+  <p>As explained in &sect;2.5, the proper input is a 10-member ensemble whose spread indicates
+  confidence. We have a single member. So our uncertainty ranges are built from <b>past</b> errors,
+  and cannot recognise that <i>this particular</i> forecast is an unusually uncertain one. Obtaining
+  the full ensemble is the single most valuable improvement available to this project.</p>
+
+  <h3>7.3 Part of the catchment is invisible to us</h3>
+  <p>The forecast data was downloaded over a box that turns out to be slightly too small. The
+  western headwaters of the catchment fall <b>outside it entirely</b>, and about half of the fine
+  boxes sit near the edge, where the model's 3&times;3 neighbourhood is partly padding rather than
+  real data. Rain falling in those western headwaters does reach the dam &mdash; we simply cannot
+  see it coming.</p>
+
+  <h3>7.4 Eleven monsoons is not many</h3>
+  <p>The inflow record ends in 2014, so no amount of effort produces more training years. This has
+  a specific consequence, verified directly: with its safety limits switched off, the transformer
+  achieves a near-perfect score on its training data. That is not a good sign &mdash; it means it
+  has enough capacity to <b>memorise</b> the examples rather than learn the rule. <b>Making the
+  model bigger is the one change guaranteed not to help.</b></p>
+
+  <h3>7.5 The reservoir-operation part is unvalidated</h3>
+  <p>The project includes a module that converts an inflow forecast into a suggested release. It
+  has never been checked against reality, because no record of Hirakud's actual storage levels or
+  releases was available. The reservoir constants it uses are published design values, not the
+  operating rules currently in force. <b>It is a demonstration, not an operational tool.</b></p>
+
+  <h3>7.6 We forecast 17 days, not 30</h3>
+  <p>The original plan aimed for 30 days. The reforecast data actually available reaches only 17.
+  This is a data limitation, not a modelling choice.</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>8 &nbsp; Three Findings Worth Remembering</h2>
+
+  <h3>8.1 The rainfall score is at a physical ceiling, not a modelling failure</h3>
+  <p>An R&sup2; of about 0.1 for daily rainfall in a 25&nbsp;km box looks disappointing. Seven
+  different approaches were tried to improve it &mdash; different network designs, different loss
+  functions, extra features, a completely different type of model &mdash; and <b>all seven landed
+  in the same place</b>.</p>
+  <p>Two measurements explain why:</p>
+  <ol>
+    <li>If you give a model <b>perfect</b> knowledge of the coarse-scale weather &mdash; cheating
+    completely &mdash; it scores about <b>0.71</b>, not 1.0. So roughly <b>29&nbsp;% of the fine
+    detail simply does not exist</b> at the coarse scale. No model can recover it, because the
+    information was never there.</li>
+    <li>ECMWF's own rainfall forecast becomes almost uncorrelated with reality beyond about a week.
+    Most of the remaining variation is not in the input either.</li>
+  </ol>
+  <div class="box ana"><span class="lbl">Analogy &mdash; enhancing a blurry photograph</span>
+  Films love the moment where someone says &ldquo;enhance!&rdquo; and a blurred face becomes sharp.
+  In reality, if the original photograph never captured those details, no software can invent them
+  &mdash; it can only guess plausibly. Our sharpener is doing genuinely well at guessing
+  plausibly. It cannot recover what the camera never recorded.</div>
+  <div class="box key"><span class="lbl">The practical consequence</span>
+  Further work on <b>model design</b> is not worthwhile; the ceiling has been established from
+  several directions. Progress requires <b>more input information</b> &mdash; the 10-member
+  ensemble, the missing upper-air predictors (&sect;3.5), and a wider download area. That is a
+  data-acquisition task, not a machine-learning one.</div>
+
+  <h3>8.2 The rainfall forecast is the bottleneck &mdash; and we proved it the hard way</h3>
+  <p>The evidence is the gap in &sect;6.2: <b>+0.577</b> with measured weather versus <b>+0.103</b>
+  with forecast weather. That gap sits <i>upstream</i> of every decision about the river model.</p>
+  <p>It would have been easy to assert this. Instead it was tested, by building a genuine
+  physics-based hydrological model &mdash; the kind that simulates soil layers, evaporation,
+  snowmelt and water routing from real physical equations &mdash; and asking whether it did better.</p>
+  <table>
+    <tr><th>Model</th><th class="num">Fed <b>measured</b> rainfall</th><th class="num">Fed <b>forecast</b> rainfall</th></tr>
+    <tr><td>Physics-based model</td><td class="num good">0.910</td><td class="num bad">0.332</td></tr>
+    <tr><td>Simple statistical model</td><td class="num">0.761</td><td class="num good">0.435</td></tr>
+  </table>
+  <p>Read that carefully. The physics-based model is <b>genuinely better</b> at turning rain into
+  runoff &mdash; 0.910 against 0.761. And it <b>loses</b> when the rain is a forecast.</p>
+  <div class="box key"><span class="lbl">Why physics does not rescue you here</span>
+  A physical model carries an internal <b>state</b> &mdash; how much water is in the soil right now
+  &mdash; and updates it every day using the rainfall it is given. If that rainfall is wrong, the
+  error does not just affect today; it is <b>absorbed into the state</b> and contaminates every
+  following day.<br><br>
+  A simpler statistical model has no such memory to poison. So physical models are <b>more</b>
+  sensitive to rainfall error, not less. This is the opposite of most people's intuition, and it is
+  why the physics-based model, though built and fully calibrated, is used here as a scientific
+  check rather than as part of the operational forecast.</div>
+  <div class="box ana"><span class="lbl">Analogy &mdash; the camera</span>
+  Upgrading from a phone camera to a professional lens transforms your photographs &mdash; provided
+  the camera body can resolve the detail. Bolt the same lens onto a twenty-year-old point-and-shoot
+  and the pictures barely change.<br><br>
+  The rainfall forecast is the lens. This project's finding is that <b>the lens is the limit</b>,
+  and no change of camera body fixes it.</div>
+
+  <h3>8.3 Both times we blamed the data, the fault was ours</h3>
+  <p>Twice in this project a disappointing result was attributed to something external, and twice
+  that was wrong.</p>
+  <ul>
+    <li>&ldquo;The transformer fails because there is not enough data&rdquo; &mdash; in fact we had
+    created the shortage ourselves by training on only 341 days instead of 4,302 (&sect;4.6).</li>
+    <li>&ldquo;The comparison shows transformers are unsuited to this basin&rdquo; &mdash; in fact
+    the competing model was being handed carefully hand-built summary features while the transformer
+    had to work them out for itself. Given the same information, the gap largely closed.</li>
+  </ul>
+  <div class="box key"><span class="lbl">The general lesson, useful well beyond hydrology</span>
+  A fair comparison between two models requires giving them the <b>same information</b>, not merely
+  the same test rows. And an apparent limit of the data is very often a limit of the experimental
+  setup. In both cases here, the honest explanation was less flattering than the original one
+  &mdash; and considerably more useful.</div>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+
+<div class="page">
+  <h2>9 &nbsp; Glossary of Every Term Used</h2>
+  <table>
+    <tr><th style="width:25%">Term</th><th>Plain-language meaning</th></tr>
+    <tr><td>Antecedent condition</td><td>How wet the catchment already was before the forecast period started</td></tr>
+    <tr><td>Attention</td><td>The mechanism letting a model look directly at any part of its input, instead of passing information along a chain</td></tr>
+    <tr><td>Bias correction</td><td>Removing a model's systematic, repeatable errors</td></tr>
+    <tr><td>Catchment (basin)</td><td>All the land that drains into the dam &mdash; about 85,000 km&sup2; here</td></tr>
+    <tr><td>CNN</td><td>Convolutional Neural Network &mdash; a model that learns spatial patterns in grid data</td></tr>
+    <tr><td>Conformal prediction</td><td>A method for producing confidence ranges with a guaranteed hit rate</td></tr>
+    <tr><td>Correlation</td><td>Whether two things rise and fall together; &minus;1 to +1</td></tr>
+    <tr><td>Cross-attention</td><td>Attention that reaches from the output side into the summary built by the input side</td></tr>
+    <tr><td>Cross-validation</td><td>Testing a model repeatedly on data it did not train on, rotating which part is held out</td></tr>
+    <tr><td>Cumec</td><td>Cubic metre per second &mdash; the unit of river flow</td></tr>
+    <tr><td>Decoder</td><td>The half of the model that produces the output, one prediction per forecast day</td></tr>
+    <tr><td>Downscaling</td><td>Turning coarse, blurry model output into fine, locally detailed predictions</td></tr>
+    <tr><td>Early stopping</td><td>Halting training once performance on unseen data stops improving, to prevent memorisation</td></tr>
+    <tr><td>ECMWF</td><td>European Centre for Medium-Range Weather Forecasts &mdash; source of the raw forecasts</td></tr>
+    <tr><td>ELU</td><td>Exponential Linear Unit &mdash; the small nonlinear function between network layers</td></tr>
+    <tr><td>Embedding layer</td><td>Converts a grid position into learnable location features &mdash; the network's &ldquo;postcode&rdquo;</td></tr>
+    <tr><td>Encoder</td><td>The half of the model that reads the input and builds an internal summary</td></tr>
+    <tr><td>Ensemble</td><td>Many forecast runs from slightly different starting points; their spread indicates uncertainty</td></tr>
+    <tr><td>Fine-tuning</td><td>Taking an already-trained model and adapting it with a little extra training on a related task</td></tr>
+    <tr><td>Gradient</td><td>The correction signal sent backwards through a network telling each weight how to adjust</td></tr>
+    <tr><td>IMD</td><td>India Meteorological Department &mdash; source of the rainfall measurements used as truth</td></tr>
+    <tr><td>Inflow</td><td>Water arriving into the reservoir &mdash; the quantity being forecast</td></tr>
+    <tr><td>Kernel (filter)</td><td>A small sliding pattern-detector inside a CNN</td></tr>
+    <tr><td>KGE</td><td>Kling&ndash;Gupta Efficiency &mdash; splits skill into timing, variability and average level</td></tr>
+    <tr><td>Lead time</td><td>How far ahead a prediction reaches; &ldquo;lead 12&rdquo; means 12 days after issue</td></tr>
+    <tr><td>Loss function</td><td>The measure of wrongness a model is trained to minimise</td></tr>
+    <tr><td>LOYO</td><td>Leave-one-year-out &mdash; rebuild the model 11 times, each time testing on a different held-out monsoon</td></tr>
+    <tr><td>MSE</td><td>Mean Squared Error &mdash; the standard average-error measure</td></tr>
+    <tr><td>NSE</td><td>Nash&ndash;Sutcliffe Efficiency; 1 = perfect, 0 = no better than predicting the average, below 0 = worse</td></tr>
+    <tr><td>Out-of-fold</td><td>A prediction made by a model that never saw that year in training</td></tr>
+    <tr><td>Overfitting</td><td>Memorising the training examples instead of learning the general rule</td></tr>
+    <tr><td>Predictor</td><td>An input quantity the model reads, such as wind or pressure</td></tr>
+    <tr><td>Quantile mapping</td><td>Reshaping a forecast so its statistics match observations. Tested here; did not help.</td></tr>
+    <tr><td>R&sup2;</td><td>Fraction of the variation in the truth that the model explains</td></tr>
+    <tr><td>Reforecast</td><td>Forecasts re-run for past dates, so models can be trained and scored against what really happened</td></tr>
+    <tr><td>Reservoir</td><td>The artificial lake held back by a dam</td></tr>
+    <tr><td>ResNet block</td><td>A layer group with a &ldquo;skip connection&rdquo; that lets the learning signal bypass layers</td></tr>
+    <tr><td>Runoff</td><td>The portion of rainfall that flows over or through the ground into the river</td></tr>
+    <tr><td>S2S</td><td>ECMWF's Sub-seasonal to Seasonal forecast product, reaching weeks ahead</td></tr>
+    <tr><td>Sigmoid</td><td>A smooth S-shaped curve used in place of a hard yes/no threshold, so learning has a slope to follow</td></tr>
+    <tr><td>Skip connection</td><td>A shortcut path around a block of layers, giving the learning signal a clear route back</td></tr>
+    <tr><td>Sub-seasonal</td><td>Forecasts roughly 10&ndash;30 days ahead &mdash; between weather and climate</td></tr>
+    <tr><td>Threat Score</td><td>Hits &divide; (hits + false alarms + misses); rewards correctly catching extreme events</td></tr>
+    <tr><td>Training</td><td>Repeatedly adjusting a model's internal numbers so its outputs get closer to the truth</td></tr>
+    <tr><td>Transformer</td><td>A sequence model built on attention rather than step-by-step recurrence</td></tr>
+    <tr><td>Weights</td><td>The adjustable numbers inside a neural network that training modifies</td></tr>
+  </table>
+  <p class="small" style="margin-top:6mm">Adapted from: Dong, N., Hao, H., Yang, M., Wei, J., Xu, S.,
+  and Kunstmann, H., <i>Deep-learning-based sub-seasonal precipitation and streamflow ensemble
+  forecasting over the source region of the Yangtze River</i>, Hydrol. Earth Syst. Sci., 29,
+  2023&ndash;2042 (2025) &middot; and Ambika, A. K., Tayal, K., Mishra, V., and Lu, D.,
+  <i>Novel Deep Learning Transformer Model for Short to Sub-Seasonal Streamflow Forecast</i>,
+  Geophys. Res. Lett., 52, e2025GL116707 (2025).</p>
+  <div class="pf">Hirakud Dam &middot; sub-seasonal inflow forecasting</div>
+</div>
+</body></html>

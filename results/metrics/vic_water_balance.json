@@ -1,0 +1,153 @@
+{
+  "outdir": "/Users/vishalmeena/Projects/Streamflow-forecasting/data/processed/vic/output",
+  "years": [
+    2004,
+    2022
+  ],
+  "spin_up_excluded": 2003,
+  "published_bands_annual": {
+    "runoff_coefficient": [
+      0.35,
+      0.4
+    ],
+    "ET_over_P": [
+      0.55,
+      0.65
+    ]
+  },
+  "annual": {
+    "P_mm_per_year": 1244.7820461383485,
+    "ET_mm_per_year": 694.5812603625162,
+    "Q_mm_per_year": 554.3732917288514,
+    "runoff_coefficient": 0.4453577182034941,
+    "ET_over_P": 0.5579942790123746,
+    "closure": 1.0033519972158689,
+    "n_days": 6939.0
+  },
+  "monsoon_only": {
+    "P_mm_per_year": 3282.8632724961176,
+    "ET_mm_per_year": 984.7501683638914,
+    "Q_mm_per_year": 1365.9873748455564,
+    "runoff_coefficient": 0.4160963346508583,
+    "ET_over_P": 0.2999668541221758,
+    "closure": 0.7160631887730341,
+    "n_days": 2318.0
+  },
+  "per_year": {
+    "2004": {
+      "runoff_coefficient": 0.43455768108969395,
+      "ET_over_P": 0.6639823771308984,
+      "closure": 1.0985400582205922,
+      "P_mm_per_year": 1094.634296306011
+    },
+    "2005": {
+      "runoff_coefficient": 0.4403439209634918,
+      "ET_over_P": 0.5189954891965207,
+      "closure": 0.9593394101600126,
+      "P_mm_per_year": 1367.034361358904
+    },
+    "2006": {
+      "runoff_coefficient": 0.4820208971757193,
+      "ET_over_P": 0.571387959456841,
+      "closure": 1.0534088566325603,
+      "P_mm_per_year": 1240.3450792712326
+    },
+    "2007": {
+      "runoff_coefficient": 0.4410797977167203,
+      "ET_over_P": 0.54256902771235,
+      "closure": 0.9836488254290704,
+      "P_mm_per_year": 1271.1995019726028
+    },
+    "2008": {
+      "runoff_coefficient": 0.4744260950683477,
+      "ET_over_P": 0.5490982796314039,
+      "closure": 1.0235243746997515,
+      "P_mm_per_year": 1257.014820737705
+    },
+    "2009": {
+      "runoff_coefficient": 0.3307186203402594,
+      "ET_over_P": 0.6571660368244114,
+      "closure": 0.9878846571646709,
+      "P_mm_per_year": 1055.980301791781
+    },
+    "2010": {
+      "runoff_coefficient": 0.37689523223116633,
+      "ET_over_P": 0.6112100820706372,
+      "closure": 0.9881053143018037,
+      "P_mm_per_year": 1125.7529865917809
+    },
+    "2011": {
+      "runoff_coefficient": 0.5109186895911265,
+      "ET_over_P": 0.5166518417689566,
+      "closure": 1.0275705313600831,
+      "P_mm_per_year": 1331.81677089863
+    },
+    "2012": {
+      "runoff_coefficient": 0.4846462347206079,
+      "ET_over_P": 0.48823499310856794,
+      "closure": 0.9728812278291759,
+      "P_mm_per_year": 1335.6574994644811
+    },
+    "2013": {
+      "runoff_coefficient": 0.47747475443581605,
+      "ET_over_P": 0.48227039125013654,
+      "closure": 0.9597451456859526,
+      "P_mm_per_year": 1372.4537347178082
+    },
+    "2014": {
+      "runoff_coefficient": 0.4955503404562329,
+      "ET_over_P": 0.5405868122394534,
+      "closure": 1.0361371526956862,
+      "P_mm_per_year": 1326.778407660274
+    },
+    "2015": {
+      "runoff_coefficient": 0.3844263667263557,
+      "ET_over_P": 0.6640615731325505,
+      "closure": 1.0484879398589062,
+      "P_mm_per_year": 1101.1672572438354
+    },
+    "2016": {
+      "runoff_coefficient": 0.4045024273385542,
+      "ET_over_P": 0.5587693273325446,
+      "closure": 0.9632717546710988,
+      "P_mm_per_year": 1190.2921110218579
+    },
+    "2017": {
+      "runoff_coefficient": 0.3786616763673702,
+      "ET_over_P": 0.6528594749172376,
+      "closure": 1.0315211512846076,
+      "P_mm_per_year": 1066.5867508438357
+    },
+    "2018": {
+      "runoff_coefficient": 0.41478854839288254,
+      "ET_over_P": 0.5863001689339492,
+      "closure": 1.0010887173268317,
+      "P_mm_per_year": 1146.8565725424658
+    },
+    "2019": {
+      "runoff_coefficient": 0.43922539260716137,
+      "ET_over_P": 0.5125312060094714,
+      "closure": 0.9517565986166328,
+      "P_mm_per_year": 1312.7377253369864
+    },
+    "2020": {
+      "runoff_coefficient": 0.5216594706380763,
+      "ET_over_P": 0.49400119111743784,
+      "closure": 1.0156606617555142,
+      "P_mm_per_year": 1467.913811262295
+    },
+    "2021": {
+      "runoff_coefficient": 0.4077938397587781,
+      "ET_over_P": 0.5534969667545312,
+      "closure": 0.9612908065133093,
+      "P_mm_per_year": 1263.4415706246573
+    },
+    "2022": {
+      "runoff_coefficient": 0.48689373736403635,
+      "ET_over_P": 0.535452436415767,
+      "closure": 1.0223461737798034,
+      "P_mm_per_year": 1323.0766657802196
+    }
+  },
+  "note": "Published bands are ANNUAL. Compare them against `annual` only; `monsoon_only` is reported to show how large the difference is, not as a target to hit."
+}

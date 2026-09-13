@@ -1,0 +1,29 @@
+{
+  "precipitation_pentad": {
+    "heavy_threshold_mm_per_pentad": 99.30985260009766,
+    "n_pentads": 715008,
+    "EC": {
+      "RMSE_all": 46.747894287109375,
+      "RMSE_heavy": 111.8861083984375,
+      "RE_pct": 4.113626480102539,
+      "CRPS": 23.928076093376045
+    },
+    "EC-QM": {
+      "RMSE_all": 49.60365295410156,
+      "RMSE_heavy": 111.53097534179688,
+      "RE_pct": -0.05538700148463249,
+      "CRPS": 24.19172496138129,
+      "RMSE_reduction_vs_EC_pct": -6.108849843488362
+    },
+    "EC-CNN": {
+      "RMSE_all": 43.99528503417969,
+      "RMSE_heavy": 112.57899475097656,
+      "RE_pct": -1.3055585622787476,
+      "CRPS": 25.676451391730264,
+      "RMSE_reduction_vs_EC_pct": 5.888199447068388
+    }
+  },
+  "n_monsoons": 19,
+  "years": "2004-2022",
+  "note": "19-monsoon rebuild; results/metrics/paper_metrics.json is the original 11-monsoon table"
+}

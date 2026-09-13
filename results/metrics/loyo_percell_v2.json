@@ -1,0 +1,176 @@
+{
+  "config": {
+    "epochs": 60,
+    "members": 10,
+    "fields_per_batch": 16,
+    "patience": 8,
+    "lr": 0.001,
+    "folds": 19
+  },
+  "folds": [
+    {
+      "year": 2004,
+      "percell_v2": 0.04112851619720459,
+      "field_v1": 0.051,
+      "delta": -0.009871483802795407,
+      "epochs": 9,
+      "seconds": 318.7
+    },
+    {
+      "year": 2005,
+      "percell_v2": 0.07217651605606079,
+      "field_v1": 0.1133,
+      "delta": -0.04112348394393921,
+      "epochs": 11,
+      "seconds": 385.3
+    },
+    {
+      "year": 2006,
+      "percell_v2": 0.07201802730560303,
+      "field_v1": 0.1047,
+      "delta": -0.032681972694396974,
+      "epochs": 9,
+      "seconds": 317.2
+    },
+    {
+      "year": 2007,
+      "percell_v2": 0.05240023136138916,
+      "field_v1": 0.1089,
+      "delta": -0.05649976863861084,
+      "epochs": 9,
+      "seconds": 317.1
+    },
+    {
+      "year": 2008,
+      "percell_v2": 0.059836626052856445,
+      "field_v1": 0.1105,
+      "delta": -0.050663373947143556,
+      "epochs": 17,
+      "seconds": 592.5
+    },
+    {
+      "year": 2009,
+      "percell_v2": 0.05886346101760864,
+      "field_v1": 0.139,
+      "delta": -0.08013653898239137,
+      "epochs": 12,
+      "seconds": 419.7
+    },
+    {
+      "year": 2010,
+      "percell_v2": 0.07773822546005249,
+      "field_v1": 0.0905,
+      "delta": -0.012761774539947507,
+      "epochs": 9,
+      "seconds": 315.9
+    },
+    {
+      "year": 2011,
+      "percell_v2": 0.04548823833465576,
+      "field_v1": 0.0877,
+      "delta": -0.04221176166534424,
+      "epochs": 11,
+      "seconds": 384.9
+    },
+    {
+      "year": 2012,
+      "percell_v2": 0.10741037130355835,
+      "field_v1": 0.0653,
+      "delta": 0.04211037130355835,
+      "epochs": 13,
+      "seconds": 454.5
+    },
+    {
+      "year": 2013,
+      "percell_v2": 0.009732306003570557,
+      "field_v1": 0.0612,
+      "delta": -0.05146769399642944,
+      "epochs": 10,
+      "seconds": 350.5
+    },
+    {
+      "year": 2014,
+      "percell_v2": 0.08113539218902588,
+      "field_v1": 0.1313,
+      "delta": -0.05016460781097412,
+      "epochs": 11,
+      "seconds": 384.9
+    },
+    {
+      "year": 2015,
+      "percell_v2": 0.06178015470504761,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 18,
+      "seconds": 626.8
+    },
+    {
+      "year": 2016,
+      "percell_v2": 0.011525094509124756,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 9,
+      "seconds": 315.4
+    },
+    {
+      "year": 2017,
+      "percell_v2": 0.05827540159225464,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 11,
+      "seconds": 385.3
+    },
+    {
+      "year": 2018,
+      "percell_v2": 0.09447282552719116,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 14,
+      "seconds": 492.0
+    },
+    {
+      "year": 2019,
+      "percell_v2": 0.024933576583862305,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 9,
+      "seconds": 317.5
+    },
+    {
+      "year": 2020,
+      "percell_v2": 0.05037736892700195,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 16,
+      "seconds": 562.1
+    },
+    {
+      "year": 2021,
+      "percell_v2": 0.030728399753570557,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 17,
+      "seconds": 595.5
+    },
+    {
+      "year": 2022,
+      "percell_v2": 0.0739927887916565,
+      "field_v1": NaN,
+      "delta": NaN,
+      "epochs": 11,
+      "seconds": 384.7
+    }
+  ],
+  "summary": {
+    "median": 0.05886346101760864,
+    "mean": 0.05705334324585764,
+    "delta_median": -0.04221176166534424,
+    "delta_mean": -0.03504291715621948,
+    "delta_se": 0.009729471944057896,
+    "t": -3.6017285786636477,
+    "wins": 1,
+    "n_folds": 19,
+    "n_compared": 11,
+    "note": "delta is vs field v1, which exists only for 2004-2014 and is scored to lead 17 while v2 is scored to lead 30; the delta is therefore not an architecture comparison"
+  }
+}

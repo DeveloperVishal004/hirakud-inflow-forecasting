@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------- data
+# 6.4 GB of ECMWF GRIBs, IMD NetCDFs, ERA5 forcing and derived arrays.
+# Far past GitHub's limits, and all of it is redistributable only from the
+# original providers.  README explains how to rebuild it from source.
+data/
+
+# ---------------------------------------------------------------- third party
+# VIC 5.0.1 source tree + compiled arm64 binary.  Upstream is
+# https://github.com/UW-Hydro/VIC (GPL-2.0); vendoring a copy here would add a
+# licence obligation for no benefit.  Build it from upstream instead.
+hydrology/vic/VIC/
+
+# ---------------------------------------------------------------- papers
+# The source papers are NOT redistributed.  Dong et al. (HESS) is open access
+# under CC BY 4.0, but Ambika et al. (GRL) is not, and mixed licences in one
+# directory invite mistakes.  Both are cited by DOI in the README.
+*.pdf
+
+# ---------------------------------------------------------------- artefacts
+# .gitignore does NOT support trailing comments -- "archive/  # note" makes the
+# comment part of the pattern and matches nothing.  Keep comments on their own line.
+
+# superseded code and docs, kept locally for provenance
+archive/
+# trained weights, regenerable
+checkpoints/
+# run logs
+logs/
+.probe_log/
+# calibration and repair backups
+*.bak_*
+*.tmp
+
+# ---------------------------------------------------------------- python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/
+
+# ---------------------------------------------------------------- os / editor
+.DS_Store
+.vscode/
+.idea/
+
+# ---------------------------------------------------------------- credentials
+# Belt and braces: these live in ~/.kaggle, never in the project.
+kaggle.json
+access_token
+.env
+*.pem
+*.key

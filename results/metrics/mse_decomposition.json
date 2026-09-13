@@ -1,0 +1,63 @@
+{
+  "n_windows": 309,
+  "n_leads": 30,
+  "n_years": 19,
+  "note": "Shares depend on aggregation; both are given. Quote the aggregation with the number.",
+  "pooled": {
+    "EC -> VIC -> RVIC": {
+      "MSE": 8278312.102747848,
+      "bias2_pct": 8.9563473103245,
+      "amplitude_pct": 6.425580743351319,
+      "phase_pct": 84.61807194632418,
+      "corr": 0.5221338979075848
+    },
+    "EC-QM -> VIC -> RVIC": {
+      "MSE": 8800718.225662164,
+      "bias2_pct": 2.6425539081905263,
+      "amplitude_pct": 1.8860952892581444,
+      "phase_pct": 95.47135080255133,
+      "corr": 0.4954375060685623
+    },
+    "EC-CNN -> VIC -> RVIC": {
+      "MSE": 7364682.805818328,
+      "bias2_pct": 0.004581931908417942,
+      "amplitude_pct": 19.885786910771664,
+      "phase_pct": 80.10963115731991,
+      "corr": 0.49492403981340244
+    },
+    "EC -> VIC -> LSTM": {
+      "MSE": 7094030.182921865,
+      "bias2_pct": 1.098057482926325,
+      "amplitude_pct": 22.681309564069004,
+      "phase_pct": 76.22063295300468,
+      "corr": 0.5223414943457062
+    }
+  },
+  "per_window": {
+    "EC -> VIC -> RVIC": {
+      "n": 309,
+      "bias2_pct": 38.180019142744506,
+      "amplitude_pct": 16.43191990367314,
+      "phase_pct": 45.388060953582354
+    },
+    "EC-QM -> VIC -> RVIC": {
+      "n": 309,
+      "bias2_pct": 27.54865177467754,
+      "amplitude_pct": 16.6052550830989,
+      "phase_pct": 55.84609314222357
+    },
+    "EC-CNN -> VIC -> RVIC": {
+      "n": 309,
+      "bias2_pct": 27.685324685660582,
+      "amplitude_pct": 28.291691533076683,
+      "phase_pct": 44.022983781262724
+    },
+    "EC -> VIC -> LSTM": {
+      "n": 309,
+      "bias2_pct": 20.515073037065953,
+      "amplitude_pct": 27.21514728542287,
+      "phase_pct": 52.26977967751119
+    }
+  },
+  "aggregation_sensitivity_points": 39.230010992741825
+}
