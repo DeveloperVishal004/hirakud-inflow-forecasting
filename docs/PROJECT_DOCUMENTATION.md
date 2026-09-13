@@ -107,6 +107,13 @@ crosses between them.
 
 ## 4. Layer 2 — Physics-based
 
+> **New to this?** `docs/PIPELINE_1_EXPLAINED.md` walks through all five stages
+> of this pipeline in plain language, assuming no hydrology or machine-learning
+> background — why rainfall is not river flow, what each stage does and why it
+> is needed, and what the numbers below actually mean. This section is the
+> summary; that document is the explanation.
+
+
 ### 4.1 ECMWF preprocessing
 
 The reforecast arrives as GRIB and needs three corrections before use:

@@ -12,6 +12,9 @@ LAYER 2 — physics-based        ECMWF → CNN → VIC → RVIC → LSTM → inf
 LAYER 3 — learned              history + forecast weather → FutureTST → inflow
 ```
 
+> **New to the project?** Start with `docs/PIPELINE_1_EXPLAINED.md` — the
+> physics pipeline explained stage by stage in plain language.
+>
 > **`docs/PROJECT_DOCUMENTATION.md` is the single source of truth** for the
 > architecture, experimental design, results and limitations.
 >
