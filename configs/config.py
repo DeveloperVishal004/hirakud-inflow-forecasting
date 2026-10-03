@@ -166,7 +166,6 @@ LOSS_LOG_SPACE = False
 # 5x5 grid, leads 1-17, control member only, 16 columns) and is left untouched so
 # the published baselines stay reproducible:
 #
-#     results/metrics/futuretst_v2.json   forecast + fine-tune  median NSE +0.313
 #     results/metrics/loyo_field.json     field downscaler      +0.1047 median
 #
 # The block below describes the re-download (preprocessing/download_s2s_dong.py
@@ -245,3 +244,41 @@ V2_N_INITS = 28                          # 31 scheduled - 3 impossible
 #             the geoid, not a fill value.
 V2_TP_UNITS = "mm"
 V2_TCC_SCALE = 100.0          # divide by this to get a 0-1 fraction
+
+
+# =============================================================================
+# Dong et al. (2025) reproduction -- CNN downscaling settings
+# =============================================================================
+# Predictors listed in sect. 3.2.1: surface elevation, total and convective
+# precipitation, and u, v, q, t, gh at 200/500/850 hPa.  That is 18; the paper
+# says 19 but names no other.  The archive's 8 extra surface fields (t2m, u10,
+# v10, msl, tcc, ssrd, sshf, slhf) are left out; --all-predictors brings them back.
+DONG_PREDICTORS = ["orog", "tp", "cp"] + \
+                  [f"{v}{lev}" for v in V2_PL_VARS for lev in V2_PL_LEVELS]
+
+# Supplement Table S1: loss = b(1 - TS) + MSE, sigmoid(x) = 1 / (1 + e^(-a x)),
+# a = 2 throughout and b rising as raw skill decays with lead.  One model covers
+# all leads; the loss computes TS separately in each window and weights it by
+# that window's b (see cnn/model.py masked_hybrid_loss).
+DONG_LEAD_WINDOWS = [(1, 7), (8, 15), (16, 23), (24, 30)]
+DONG_TS_WEIGHTS = [0.4, 0.8, 1.5, 2.0]
+DONG_SIGMOID_SHARPNESS = 2.0
+
+# RAINFALL IS SCALED BEFORE THE LOSS.  The paper does not say whether it was, and
+# here it decides whether the TS term does anything.  In mm, Mahanadi monsoon rain
+# has per-cell variance ~283 mm^2 and a p90 threshold of ~24 mm, so b <= 2 is
+# under 1 % of the loss and a = 2 confines the sigmoid's gradient to about
+# +/-1 mm around the threshold, where almost no prediction sits.  Dividing by the
+# standard deviation of training-year rainfall (~16.8 mm) puts MSE near 1 and
+# widens the sigmoid to roughly +/-8 mm, so Table S1's a and b mean something.
+# The divisor is computed from the training years only; predictions are
+# multiplied back to mm before anything is scored.
+
+# Fixed split, mirroring the paper's 2002-2015 train / 2016-2019 test.  2017 is
+# held out of training for early stopping.  QM calibrates on 2004-2017, as the
+# paper's QM used its whole training period.
+DONG_VAL_YEAR = 2017
+DONG_TEST_YEARS = [2018, 2019, 2020, 2021, 2022]
+
+# Dry-day cut-off for quantile mapping (Gudmundsson et al., 2012, as in sect. 3.2.2).
+QM_WET_DAY_MM = 0.1

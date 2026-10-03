@@ -1,25 +1,25 @@
-"""The Dong et al. (2025) metric suite, sect. 3.5, for both halves of the chain.
+"""The Dong et al. (2025) precipitation metrics, sect. 3.5 and Fig. 4.
 
-PRECIPITATION, evaluated on 5-DAY totals, not daily.  The paper is explicit:
-"we classify the 5 d daily precipitation less than and greater than the 90th
-percentile of all historic 5 d precipitation ... as light rain events and heavy
-rain events".  Aggregating to pentads is not cosmetic -- it removes day-to-day
-timing error and is a large part of why their reported skill exceeds anything
-computed daily.  Scoring daily against their pentad numbers understates our
-result; this makes the comparison honest in both directions.
+The paper scores the AREAL-AVERAGED precipitation -- the basin mean, which is
+also what a lumped hydrological model is driven with:
 
-    RMSE    all events, and heavy events separately (>= 90th percentile)
-    RE      relative error of the mean
-    CRPS    over the 10 ensemble members, so spread is scored, not just the mean
+    RMSE, RE   of the ensemble-mean daily basin rainfall, over all leads and
+               for each lead window (1-7, 8-15, 16-23, 24-30 d)
+    CRPS       of the daily basin rainfall over the 10 members, so the spread
+               is scored and not just the mean
+    heavy      5-day basin totals at or above the 90th percentile of all
+               observed 5-day totals are heavy events, the rest light; RMSE is
+               reported for each.  5-day totals label events -- they are not the
+               headline daily RMSE.
 
-STREAMFLOW
-    RMSE, RE, NSE, and REF -- relative error of the maximum daily flow, the
-    paper's extreme-event metric.
+The basin mean of each row uses only the cells IMD observed on that day, for
+the forecast and the observation alike.  Only test rows are scored.
 
-Run:  python cnn/paper_metrics.py
-Out:  results/metrics/paper_metrics.json
+Run:  python cnn/paper_metrics.py [--split fixed] [--tag _x]
+Out:  results/metrics/paper_metrics_<split><tag>.json
 """
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -47,116 +47,113 @@ def crps_ensemble(ens, obs):
     return float((term1 - 0.5 * term2).mean())
 
 
-def to_pentad(x, lead):
-    """Sum consecutive 5-lead blocks: (..., 30) -> (..., 6)."""
-    idx = [(lead >= lo) & (lead < lo + PENTAD) for lo in range(1, 31, PENTAD)]
-    return np.stack([x[..., i].sum(-1) for i in idx], -1)
+def basin_mean(x, ok):
+    """(n_key, [member,] cell) -> (n_key, [member]) mean over observed cells."""
+    if x.ndim == 3:
+        ok = ok[:, None, :]
+    w = ok.astype(np.float64)
+    n = w.sum(-1)
+    with np.errstate(invalid="ignore"):
+        return np.where(n > 0, (np.nan_to_num(x) * w).sum(-1) / n, np.nan)
 
 
-def precip_metrics():
-    # Prefer the 19-monsoon baseline when it exists; the 11-monsoon file is kept
-    # so the original paper table stays reproducible.  Both must be the same
-    # length as percell_v2_oof.npz or the products are not on the same rows.
-    ecqm = next((q for q in (C.PROCESSED / "ec_qm_v2_full.npz",
-                             C.PROCESSED / "ec_qm_v2.npz") if q.exists()),
-                C.PROCESSED / "ec_qm_v2.npz")
-    z = np.load(ecqm, allow_pickle=True)
-    print(f"  baseline: {ecqm.name}  ({len(z['lead']):,} rows)")
-    lead = z["lead"]
-    obs, ok = z["obs"], z["obs_mask"]
-    prods = {"EC": z["ec"], "EC-QM": z["ec_qm"]}
-    p = C.PROCESSED / "percell_v2_oof.npz"
-    if p.exists():
-        cnn = np.load(p, allow_pickle=True)
-        if len(cnn["lead"]) != len(z["lead"]):
-            raise SystemExit(
-                f"{p.name} has {len(cnn['lead'])} rows but {ecqm.name} has "
-                f"{len(z['lead'])} -- rebuild the baseline with "
-                f"cnn/quantile_mapping.py before scoring")
-        prods["EC-CNN"] = cnn["oof_members"]
-
-    # reshape to (n_init, lead, member, cell) so pentads can be summed
-    inits = pd.to_datetime(z["valid"]) - pd.to_timedelta(lead, unit="D")
-    ui = pd.DatetimeIndex(sorted(set(inits)))
-    order = np.lexsort((lead, inits.astype("int64")))
-    L = C.V2_LEAD_MAX
-    def cube(a):
-        return a[order].reshape(len(ui), L, *a.shape[1:])
-    o5 = cube(obs).transpose(0, 2, 1).reshape(-1, L)
-    m5 = cube(ok).transpose(0, 2, 1).reshape(-1, L)
-    leads = np.arange(1, L + 1)
-    o_p = to_pentad(o5, leads)
-    keep = to_pentad(m5.astype(int), leads) == PENTAD      # complete pentads only
-    thr = np.percentile(o_p[keep], C.HEAVY_RAIN_PERCENTILE)
-
-    out = {"heavy_threshold_mm_per_pentad": float(thr),
-           "n_pentads": int(keep.sum())}
-    for name, arr in prods.items():
-        c = cube(arr)                                       # (n_init, L, mem, cell)
-        mean5 = c.mean(2).transpose(0, 2, 1).reshape(-1, L)
-        f_p = to_pentad(mean5, leads)
-        hv = keep & (o_p >= thr)
-        out[name] = {
-            "RMSE_all": float(np.sqrt(((f_p[keep] - o_p[keep]) ** 2).mean())),
-            "RMSE_heavy": float(np.sqrt(((f_p[hv] - o_p[hv]) ** 2).mean())),
-            "RE_pct": float(100 * (f_p[keep].mean() - o_p[keep].mean()) / o_p[keep].mean()),
-        }
-        ens = c.transpose(0, 3, 1, 2).reshape(-1, L, c.shape[2])
-        ens_p = to_pentad(ens.transpose(0, 2, 1), leads).transpose(0, 2, 1)
-        out[name]["CRPS"] = crps_ensemble(
-            ens_p.reshape(-1, ens_p.shape[-1])[keep.ravel()], o_p[keep])
-    for name in prods:
-        if name != "EC":
-            r = out[name]["RMSE_all"] / out["EC"]["RMSE_all"]
-            out[name]["RMSE_reduction_vs_EC_pct"] = float(100 * (1 - r))
-    return out
-
-
-def streamflow_metrics():
-    obs = pd.read_parquet(C.PROCESSED / "inflow_daily.parquet")
-    obs = obs[obs["inflow_valid"]].set_index("date")["inflow"]
-    res = {}
-    for prod in ("ec", "ec_qm", "ec_cnn"):
-        f = C.PROCESSED / f"lstm_inflow_{prod}.npz"
-        if not f.exists():
-            continue
-        z = np.load(f, allow_pickle=True)
-        p, t, m = z["pred"], z["target"], z["mask"]
-        vic = np.load(C.PROCESSED / f"vic_inflow_{prod}.npz", allow_pickle=True)["q"]
-        vic = vic.reshape(-1, vic.shape[-1])[:len(p)]
-        def block(pred):
-            pm, tm = pred[m], t[m]
-            return {"RMSE": float(np.sqrt(((pm - tm) ** 2).mean())),
-                    "RE_pct": float(100 * (pm.mean() - tm.mean()) / tm.mean()),
-                    "NSE": float(1 - ((pm - tm) ** 2).sum() / ((tm - tm.mean()) ** 2).sum()),
-                    "REF_pct": float(100 * (pred.max(1).mean() - t.max(1).mean())
-                                     / t.max(1).mean())}
-        res[prod.upper().replace("_", "-")] = {"VIC": block(vic), "VIC-LSTM": block(p)}
-    return res
+def scores(f, o):
+    """RMSE and RE (%) of forecast f against observed o, NaNs dropped."""
+    ok = np.isfinite(f) & np.isfinite(o)
+    f, o = f[ok], o[ok]
+    return {"RMSE": float(np.sqrt(((f - o) ** 2).mean())),
+            "RE_pct": float(100 * (f.sum() - o.sum()) / o.sum()), "n": int(ok.sum())}
 
 
 def main():
-    out = {"precipitation_pentad": precip_metrics(),
-           "streamflow": streamflow_metrics()}
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--split", choices=["fixed", "loyo"], default="fixed")
+    ap.add_argument("--tag", default="", help="suffix of the CNN run to score")
+    args = ap.parse_args()
+
+    base = np.load(C.PROCESSED / f"ec_qm_v2_{args.split}.npz", allow_pickle=True)
+    lead, valid, obs, ok = base["lead"], base["valid"], base["obs"], base["obs_mask"]
+    test = base["tested"].copy()
+    prods = {"EC": base["ec"], "EC-QM": base["ec_qm"]}
+    cnn_path = C.PROCESSED / f"percell_v2_{args.split}{args.tag}.npz"
+    if cnn_path.exists():
+        cnn = np.load(cnn_path, allow_pickle=True)
+        for k in ("lead", "init_year", "valid"):
+            if not np.array_equal(cnn[k], base[k]):
+                raise SystemExit(f"{cnn_path.name} and the baseline disagree on "
+                                 f"`{k}` -- they are not on the same rows")
+        if not np.array_equal(cnn["cells"], base["cells"]):
+            raise SystemExit("CNN and baseline use different catchment cells")
+        test &= cnn["tested"]
+        prods["EC-CNN"] = cnn["pred_members"]
+        print(f"  scoring {cnn_path.name} against EC and EC-QM")
+    else:
+        print(f"  {cnn_path.name} not found -- scoring EC and EC-QM only")
+
+    # Arrange rows as (init, lead) so 5-day totals can be summed.
+    inits = pd.to_datetime(valid) - pd.to_timedelta(lead, unit="D")
+    L = C.V2_LEAD_MAX
+    order = np.lexsort((lead, inits.values.astype("int64")))
+    n_init = len(order) // L
+    assert n_init * L == len(order) and (lead[order].reshape(n_init, L)
+                                         == np.arange(1, L + 1)).all(), \
+        "every initialisation must carry leads 1-30 exactly once"
+    def cube(a):
+        return a[order].reshape(n_init, L, *a.shape[1:])
+
+    obs_b = cube(basin_mean(obs, ok))                     # (n_init, L)
+    test_c = cube(test)[:, 0]
+    assert (cube(test) == test_c[:, None]).all(), "test split cuts through an init"
+
+    # Heavy threshold: p90 of all observed 5-day basin totals, every year, as
+    # the paper does ("all historic 5 d precipitation during 2002-2019").
+    o5_all = obs_b.reshape(n_init, L // PENTAD, PENTAD).sum(-1)
+    thr5 = float(np.nanpercentile(o5_all, C.HEAVY_RAIN_PERCENTILE))
+    o5 = o5_all[test_c]
+    heavy = o5 >= thr5
+
+    win_idx = [(lead_lo, lead_hi) for lead_lo, lead_hi in C.DONG_LEAD_WINDOWS]
+    out = {"split": args.split, "n_test_inits": int(test_c.sum()),
+           "test_years": sorted(set(base["init_year"][test].tolist())),
+           "heavy_threshold_mm_per_5d": thr5, "products": {}}
+    for name, arr in prods.items():
+        ens = cube(basin_mean(arr, ok))[test_c]           # (n, L, member)
+        mean = ens.mean(-1)
+        o = obs_b[test_c]
+        r = {"daily_all": scores(mean, o)}
+        good = np.isfinite(o) & np.isfinite(mean)
+        r["daily_all"]["CRPS"] = crps_ensemble(ens[good], o[good])
+        for lo, hi in win_idx:
+            s = slice(lo - 1, hi)
+            r[f"daily_{lo}-{hi}"] = scores(mean[:, s], o[:, s])
+            g = good[:, s]
+            r[f"daily_{lo}-{hi}"]["CRPS"] = crps_ensemble(ens[:, s][g], o[:, s][g])
+        f5 = mean.reshape(len(mean), L // PENTAD, PENTAD).sum(-1)
+        r["5d_all"] = scores(f5, o5)
+        r["5d_heavy"] = scores(f5[heavy], o5[heavy])
+        r["5d_light"] = scores(f5[~heavy], o5[~heavy])
+        out["products"][name] = r
+
+    ec = out["products"]["EC"]
+    for name, r in out["products"].items():
+        if name != "EC":
+            r["RMSE_reduction_vs_EC_pct"] = {
+                k: float(100 * (1 - r[k]["RMSE"] / ec[k]["RMSE"])) for k in r
+                if isinstance(r[k], dict) and "RMSE" in r[k]}
+
     C.METRICS.mkdir(parents=True, exist_ok=True)
-    f = C.METRICS / "paper_metrics.json"
+    f = C.METRICS / f"paper_metrics_{args.split}{args.tag}.json"
     f.write_text(json.dumps(out, indent=2))
-    pm = out["precipitation_pentad"]
-    print(f"=== precipitation, 5-day totals ({pm['n_pentads']:,} pentads, "
-          f"heavy >= {pm['heavy_threshold_mm_per_pentad']:.1f} mm) ===")
-    print(f"{'product':10}{'RMSE all':>10}{'RMSE heavy':>12}{'RE %':>8}{'CRPS':>9}{'vs EC':>9}")
-    for k, v in pm.items():
-        if isinstance(v, dict):
-            print(f"{k:10}{v['RMSE_all']:10.2f}{v['RMSE_heavy']:12.2f}"
-                  f"{v['RE_pct']:8.1f}{v['CRPS']:9.2f}"
-                  f"{v.get('RMSE_reduction_vs_EC_pct', 0):8.1f}%")
-    if out["streamflow"]:
-        print(f"\n=== streamflow ===")
-        print(f"{'product':10}{'model':10}{'RMSE':>10}{'RE %':>8}{'NSE':>9}{'REF %':>9}")
-        for prod, d in out["streamflow"].items():
-            for mdl, v in d.items():
-                print(f"{prod:10}{mdl:10}{v['RMSE']:10.0f}{v['RE_pct']:8.1f}"
-                      f"{v['NSE']:9.3f}{v['REF_pct']:9.1f}")
+
+    print(f"\n=== basin-mean precipitation, test years {out['test_years']} "
+          f"({out['n_test_inits']} inits) ===")
+    cols = ["daily_all"] + [f"daily_{lo}-{hi}" for lo, hi in win_idx] + ["5d_heavy"]
+    print(f"{'RMSE (mm)':10}" + "".join(f"{c.replace('daily_', 'd '):>11}" for c in cols)
+          + f"{'RE %':>8}{'CRPS':>7}")
+    for name, r in out["products"].items():
+        print(f"{name:10}" + "".join(f"{r[c]['RMSE']:11.2f}" for c in cols)
+              + f"{r['daily_all']['RE_pct']:8.1f}{r['daily_all']['CRPS']:7.2f}")
+    print(f"(heavy = 5-day basin total >= {thr5:.1f} mm; 5d_heavy RMSE is per 5 days)")
     print(f"\nwrote {f}")
 
 

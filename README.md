@@ -13,7 +13,10 @@ LAYER 3 — learned              history + forecast weather → FutureTST → in
 ```
 
 > **New to the project?** Start with `docs/PIPELINE_1_EXPLAINED.md` — the
-> physics pipeline explained stage by stage in plain language.
+> physics pipeline explained stage by stage in plain language — or
+> `docs/TWO_APPROACHES_COMPARED.md`, which covers both approaches for a reader
+> with no hydrology or machine-learning background. (Chapters 1–5 are revised
+> and current; Chapters 6 onward are pending.)
 >
 > **`docs/PROJECT_DOCUMENTATION.md` is the single source of truth** for the
 > architecture, experimental design, results and limitations.
@@ -31,7 +34,7 @@ LAYER 3 — learned              history + forecast weather → FutureTST → in
     hydrology/vic/    VIC setup, calibration, forecasting, RVIC routing
     inflow/           LSTM correction, FutureTST, head-to-head evaluation
     tools/            diagnostics, repair utilities, Kaggle runner
-    docs/             PROJECT_DOCUMENTATION.md, FINDINGS.md
+    docs/             PROJECT_DOCUMENTATION.md, FINDINGS.md, explainers
     results/metrics/  one JSON per experiment
     archive/          superseded code and documentation (do not quote)
 

@@ -139,6 +139,43 @@ stays here because it is an analysis of the paper's own product.
 
 ---
 
+## [CORRECTED] Raw ECMWF is worse than useless at cell scale
+
+**Believed, and quoted everywhere.** Raw ECMWF per-cell R² = **−0.136**, downscaled
+**+0.057** — "the sign flip is the claim".
+
+**Disproved 14 September 2026.** The −0.136 figure is produced by no script and
+appears in no `results/metrics/` file; it traces only to
+`archive/historical_docs/`. Re-measured on the same 224 cells, same mask, same 19
+folds and the same **ensemble-mean** regime the CNN is scored in
+(`tools/raw_ec_percell_baseline.py`):
+
+| per-cell R² | mean | folds positive |
+|---|---|---|
+| raw EC, nearest coarse cell | **+0.044** | 17/19 |
+| raw EC, 3×3 smoothed | **+0.073** | 19/19 |
+| CNN | +0.057 | 19/19 |
+| raw EC, **per-member** | **−0.349** | 0/19 |
+
+Raw ECMWF is already positive. The CNN's honest gain is **+0.013**, not a rescue
+from negative territory.
+
+**Why the wrong version survived.** It was a **per-member** baseline set against an
+**ensemble-mean** model. Averaging ten members is worth ~0.39 of R² here — far more
+than the network contributes. This is the **third** time the two regimes have been
+mixed; `evaluate_operational.py` was written to stop exactly this, but it governs
+the *inflow* metrics and was never applied to the *rainfall* ones.
+
+**The uncomfortable part.** Plain 3×3 smoothing — no learning, no terrain — beats
+the trained network. A squared-error score on a noisy right-skewed field rewards
+the conditional mean, which is the same behaviour that makes the CNN's heavy-rain
+and CRPS scores worse than doing nothing. The surviving case for downscaling is
+that VIC needs a value for 150 cells, not that per-cell R² is better.
+→ *One regime per metric, enforced in code — not just for the metric that once
+burned you.*
+
+---
+
 ## The correction layer is a bias layer
 
 Tested three independent ways, all agreeing:

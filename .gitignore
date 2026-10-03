@@ -1,8 +1,21 @@
 # ---------------------------------------------------------------- data
-# 6.4 GB of ECMWF GRIBs, IMD NetCDFs, ERA5 forcing and derived arrays.
-# Far past GitHub's limits, and all of it is redistributable only from the
-# original providers.  README explains how to rebuild it from source.
-data/
+# 6.4 GB of ECMWF GRIBs, IMD NetCDFs, ERA5 forcing and derived arrays.  Most of
+# it stays out.  The CNN downscaling training data, benchmark and predictions
+# ARE committed (through Git LFS, see .gitattributes) -- allowed only because
+# this repo is PRIVATE: IMD and ECMWF data are redistributable only from the
+# original providers, so never make the repo public while these files are in
+# its history.  README explains how to rebuild everything from source.
+data/*
+!data/processed/
+data/processed/*
+# training data: the member archive, the aligned targets, the packed file
+!data/processed/s2s/
+!data/processed/downscaling_v2_full.npz
+!data/processed/percell_v2_full.npz
+# EC / EC-QM benchmark and CNN test predictions, fixed split
+!data/processed/ec_qm_v2_fixed.npz
+!data/processed/percell_v2_fixed.npz
+!data/processed/percell_v2_fixed_pw_*.npz
 
 # ---------------------------------------------------------------- third party
 # VIC 5.0.1 source tree + compiled arm64 binary.  Upstream is
@@ -22,8 +35,10 @@ hydrology/vic/VIC/
 
 # superseded code and docs, kept locally for provenance
 archive/
-# trained weights, regenerable
-checkpoints/
+# trained weights, regenerable -- except the Dong-spec CNN runs, kept (LFS)
+checkpoints/*
+!checkpoints/percell_v2_fixed/
+!checkpoints/percell_v2_fixed_pw_*/
 # run logs
 logs/
 .probe_log/

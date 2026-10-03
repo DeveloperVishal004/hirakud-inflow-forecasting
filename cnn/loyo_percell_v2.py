@@ -1,34 +1,39 @@
 """Per-cell ResNet downscaler on the v2 archive -- Dong et al. (2025) sect. 3.2.1.
 
-This is the paper's architecture and the paper's data path, not an adaptation:
+The paper's architecture, loss, predictors and split:
 
-    input      26 predictors on a 3 x 3 coarse patch centred on the target cell
-               (the paper uses 19; ours is a superset -- same 15 upper-air
-                fields, more surface fields)
+    input      18 predictors on a 3 x 3 coarse patch centred on the target cell:
+               orography, tp, cp and u, v, q, t, gh at 200/500/850 hPa
+               (C.DONG_PREDICTORS; --all-predictors uses all 26 archive fields)
     model      3 ResNet blocks, 64 -> 32 -> 16 feature maps, 3 x 3 kernels, ELU
                coordinate embedding merged with the flattened conv features,
                then two fully connected layers        (cnn/model.py)
-    loss       b(1 - TS) + MSE with a differentiable threat score, eqs. 3-7
-    optimiser  Adam with early stopping
-    ensemble   each member downscaled separately, exactly as the paper does
+    loss       b(1 - TS) + MSE, eqs. 3-7, with Supplement Table S1's a = 2 and
+               b = 0.4 / 0.8 / 1.5 / 2 for leads 1-7 / 8-15 / 16-23 / 24-30,
+               on rainfall divided by its training-year standard deviation
+    optimiser  Adam, early stopping on the same loss over a held-out year
+    ensemble   one independently trained model per perturbed member
+    split      --split fixed (default): train 2004-2016, stop on 2017, test
+               2018-2022, mirroring the paper's 2002-2015 / 2016-2019.
+               --split loyo: one fold per monsoon, for the final robustness check.
 
-WHY THE PATCH MATTERS NOW.  The paper chose 3 x 3 after testing 1x1, 5x5 and
-7x7, so the patch size is a finding, not an arbitrary default.  On the old 5 x 5
-download 48 % of these patches ran off the grid and were edge-clamped, feeding
-the model a repeated row of cells as if it were data.  On the 7 x 7 v2 domain
-that figure is 0 % -- every catchment cell has a genuine neighbourhood.
+WHY THE PATCH MATTERS.  The paper chose 3 x 3 after testing 1x1, 5x5 and 7x7.
+On the 7 x 7 v2 domain every catchment cell has a genuine neighbourhood; none
+of the patches is edge-clamped.
 
-COST.  9,240 (init, lead) keys x 10 members x 224 catchment cells = 20.7 M
-per-cell samples per epoch.  Cells are not drawn independently: all 224 patches
-of one field are gathered and predicted together, which is both faster and
-exactly equivalent, since they share the same coarse field.
+COST.  All 224 patches of one field are gathered and predicted together, which
+is faster than drawing cells independently and exactly equivalent, since they
+share the same coarse field.
 
-Run:  python cnn/loyo_percell_v2.py [--epochs 60] [--members 10]
-Out:  results/metrics/loyo_percell_v2.json
+Run:  python cnn/loyo_percell_v2.py [--split fixed] [--epochs 60] [--members 10]
+Out:  results/metrics/percell_v2_<split><tag>.json
+      data/processed/percell_v2_<split><tag>.npz   (test-row predictions, mm)
 """
 
 import argparse
 import json
+import os
+import random
 import sys
 import time
 from pathlib import Path
@@ -40,18 +45,27 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from configs import config as C
 from cnn.model import ResNetDownscaler, masked_hybrid_loss
-from cnn.train_field import device, set_seed, r2
-from cnn.loyo_field_v2 import V1_FOLDS
 
-# Folds come from the DATA, not from config: the record now spans 2004-2022
-# and a hard-coded YEAR_MAX silently drops every season after 2014.  Set
-# STREAMFLOW_FULL=0 to fall back to the original 11-monsoon dataset.
-import os
+# The dataset the member archive is aligned to (used by quantile_mapping.py and
+# pack_percell_kaggle.py).  STREAMFLOW_FULL=0 falls back to the 11-monsoon build.
 _FULL = os.environ.get("STREAMFLOW_FULL", "1") != "0"
 DSET = (C.PROCESSED / "downscaling_v2_full.npz") if _FULL and (
     C.PROCESSED / "downscaling_v2_full.npz").exists() else (
     C.PROCESSED / "downscaling_v2.npz")
-YEARS = sorted(set(int(y) for y in np.load(DSET, allow_pickle=True)["init_year"]))
+
+
+def set_seed(s: int) -> None:
+    random.seed(s); np.random.seed(s); torch.manual_seed(s)
+
+
+def device() -> str:
+    if torch.cuda.is_available():
+        return "cuda"
+    return "mps" if torch.backends.mps.is_available() else "cpu"
+
+
+def r2(p, o):
+    return float(1 - ((p - o) ** 2).sum() / ((o - o.mean()) ** 2).sum())
 
 
 def fine_grid():
@@ -122,262 +136,362 @@ def patch_index(cells, n_row=7, n_col=7):
     return np.array(rows), np.array(cols)
 
 
+
+
+def lead_window(lead):
+    """Lead (days) -> index into C.DONG_LEAD_WINDOWS."""
+    lead = np.asarray(lead)
+    w = np.full(lead.shape, -1, np.int64)
+    for i, (lo, hi) in enumerate(C.DONG_LEAD_WINDOWS):
+        w[(lead >= lo) & (lead <= hi)] = i
+    assert (w >= 0).all(), "lead outside every Table S1 window"
+    return w
+
+
+def split_folds(init_year, split: str, n_folds=None):
+    """-> [(name, test_rows, val_rows)].  Training rows are everything else.
+
+    Validation is always a WHOLE year, never a random split: fields inside one
+    monsoon are correlated, so a random split would leak.
+    """
+    years = sorted(set(int(y) for y in init_year))
+    if split == "fixed":
+        test = np.isin(init_year, C.DONG_TEST_YEARS)
+        val = init_year == C.DONG_VAL_YEAR
+        assert test.any() and val.any(), "fixed split years missing from the data"
+        return [("fixed", test, val)]
+    folds = []
+    for Y in years[:n_folds]:
+        # The chronologically last non-test year stops early (2022 for 18 of 19
+        # folds); it never enters training.
+        inner = [y for y in years if y != Y][-1]
+        folds.append((str(Y), init_year == Y, init_year == inner))
+    return folds
+
+
+def load_inputs(n_members: int, all_predictors: bool):
+    """-> coarse (n_key, member, channel, row, col) float32, channels, dataset z.
+
+    Prefers the packed file (cropped, standardised, float16 -- see
+    preprocessing/pack_percell_kaggle.py), which is all a Kaggle run ships.
+    """
+    packed = next((q for q in (C.PROCESSED / "percell_v2_full.npz",
+                               C.PROCESSED / "percell_v2.npz") if q.exists()), None)
+    if packed is not None:
+        z = np.load(packed, allow_pickle=True)
+        names = [str(c) for c in z["channels"]]
+        keep = list(range(len(names))) if all_predictors else \
+            [names.index(v) for v in C.DONG_PREDICTORS]
+        coarse = z["coarse"][:, :n_members][:, :, keep].astype(np.float32)
+        print(f"  inputs from {packed.name}")
+    else:
+        coarse, inits, leads, names = load_members(n_members)
+        z = np.load(DSET, allow_pickle=True)
+        keep = list(range(len(names))) if all_predictors else \
+            [names.index(v) for v in C.DONG_PREDICTORS]
+        coarse = coarse[:, :, keep]
+        print(f"  inputs from {C.S2S_V2_DIR} (unaligned path: check row order)")
+    return coarse, [names[i] for i in keep], z
+
+
+def parse_members(spec: str, n_mem: int):
+    """'' -> all; '0-4' -> [0..4]; '5,7' -> [5, 7]."""
+    if not spec:
+        return list(range(n_mem))
+    ids = []
+    for part in spec.split(","):
+        lo, _, hi = part.partition("-")
+        ids += list(range(int(lo), int(hi or lo) + 1))
+    assert ids and min(ids) >= 0 and max(ids) < n_mem, f"--member-ids {spec} outside 0-{n_mem - 1}"
+    return sorted(set(ids))
+
+
+def fold_readout(pred, obs, ok):
+    """Quick ensemble-mean scores; cnn/paper_metrics.py does the paper's scoring."""
+    p = pred.mean(axis=1)
+    basin_p = np.nanmean(np.where(ok, p, np.nan), 1)
+    basin_o = np.nanmean(np.where(ok, obs, np.nan), 1)
+    return {"percell_r2": r2(p[ok], obs[ok]),
+            "basin_rmse_mm": float(np.sqrt(np.nanmean((basin_p - basin_o) ** 2)))}
+
+
+def merge_parts(split: str, tag: str):
+    """Combine per-GPU _part outputs into the single run they add up to."""
+    stem = f"percell_v2_{split}{tag}"
+    parts = sorted(C.PROCESSED.glob(f"{stem}_part*.npz"))
+    if not parts:
+        raise SystemExit(f"no {stem}_part*.npz to merge")
+    zs = [np.load(p, allow_pickle=True) for p in parts]
+    js = [json.loads((C.METRICS / f"{p.stem}.json").read_text()) for p in parts]
+    base = zs[0]
+    for z in zs[1:]:
+        for k in ("tested", "init_year", "lead", "valid", "cells"):
+            assert np.array_equal(z[k], base[k]), f"parts disagree on {k}"
+    pred = base["pred_members"].copy()
+    for z in zs[1:]:
+        both = np.isfinite(pred) & np.isfinite(z["pred_members"])
+        assert not both.any(), "two parts trained the same member"
+        pred = np.where(np.isfinite(pred), pred, z["pred_members"])
+    tested = base["tested"]
+    missing = [m for m in range(pred.shape[1]) if not np.isfinite(pred[tested, m]).all()]
+    assert not missing, f"members {missing} have no predictions"
+
+    folds = []
+    for fi, f0 in enumerate(js[0]["folds"]):
+        members = sorted((m for j in js for m in j["folds"][fi]["members"]),
+                         key=lambda m: (m["member"], m.get("model", "")))
+        test_k = np.isin(base["init_year"], C.DONG_TEST_YEARS) if split == "fixed" \
+            else base["init_year"] == int(f0["fold"])
+        folds.append({"fold": f0["fold"], "rain_scale_mm": f0["rain_scale_mm"],
+                      "members": members,
+                      "seconds": max(j["folds"][fi]["seconds"] for j in js),
+                      **fold_readout(pred[test_k], base["target"][test_k],
+                                     base["mask"][test_k])})
+        print(f"  [{f0['fold']}] {len(members)} models  ensemble-mean per-cell R^2 "
+              f"{folds[-1]['percell_r2']:+.4f}   basin-mean RMSE "
+              f"{folds[-1]['basin_rmse_mm']:.2f} mm/day")
+    cfg = dict(js[0]["config"], member_ids="", merged_from=[p.name for p in parts])
+    (C.METRICS / f"{stem}.json").write_text(json.dumps(
+        {"config": cfg, "predictors": js[0]["predictors"], "folds": folds},
+        indent=2, default=str))
+    np.savez_compressed(C.PROCESSED / f"{stem}.npz", pred_members=pred, tested=tested,
+                        cells=base["cells"], init_year=base["init_year"],
+                        lead=base["lead"], valid=base["valid"],
+                        target=base["target"], mask=base["mask"])
+    print(f"wrote {stem}.npz and {stem}.json from {len(parts)} parts")
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--epochs", type=int, default=60)
+    ap.add_argument("--split", choices=["fixed", "loyo"], default="fixed")
+    ap.add_argument("--epochs", type=int, default=C.MAX_EPOCHS)
     ap.add_argument("--members", type=int, default=10, help="paper uses 10 perturbed")
     ap.add_argument("--fields-per-batch", type=int, default=16)
-    ap.add_argument("--patience", type=int, default=8)
+    ap.add_argument("--patience", type=int, default=C.EARLY_STOP_PATIENCE)
     ap.add_argument("--lr", type=float, default=C.LR)
-    ap.add_argument("--folds", type=int, default=len(YEARS))
-    ap.add_argument("--sigmoid-sharpness", type=float,
-                    default=C.LOSS_SIGMOID_SHARPNESS,
-                    help="a in the differentiable threat score, "
-                         "sigmoid(a*(pred - threshold)).  MEASURED 2026-09-08: "
-                         "at a=1.0 the threshold is 24.46 mm while the median "
-                         "sigmoid input is -15.95, so 99.74%% of cells sit in the "
-                         "flat tail with mean gradient 1.2e-4 -- the TS term is "
-                         "SWITCHED OFF, not merely under-weighted, which is why "
-                         "a b sweep to 66 changed nothing.  Live-gradient share: "
-                         "a=1.0 -> 0.19%%, a=0.3 -> 44%%, a=0.1 -> 100%%.  Tune THIS "
-                         "before tuning b")
-    ap.add_argument("--ts-weight", type=float, default=C.LOSS_TS_WEIGHT,
-                    help="b in Dong eq. 3, loss = b*(1-TS) + MSE. MEASURED "
-                         "2026-09-08: at b=1 the TS term is 0.375%% of the loss "
-                         "(MSE 265 mm^2 vs b*(1-TS) 1.00), so the extreme-rain "
-                         "term is inert and the model trains on plain MSE. The "
-                         "paper does not specify b. b~66 makes TS ~20%% of the "
-                         "loss. Raising it should RAISE peak ratio and threat "
-                         "score while LOWERING overall R2 -- judge it on the "
-                         "former, not the latter")
-    ap.add_argument("--tag", default="", help="suffix for the output filenames, "
-                                              "so a sweep does not overwrite")
-    ap.add_argument("--val-rotate", action="store_true",
-                    help="rotate the inner validation year instead of always "
-                         "using the chronologically last one. OFF by default so "
-                         "published results stay reproducible -- turning it on "
-                         "requires a full re-run.")
+    ap.add_argument("--folds", type=int, default=None, help="loyo only: first N folds")
+    ap.add_argument("--sigmoid-sharpness", type=float, default=C.DONG_SIGMOID_SHARPNESS,
+                    help="a in sigmoid(a*(pred - threshold)), in scaled units")
+    ap.add_argument("--ts-weights", default=",".join(str(b) for b in C.DONG_TS_WEIGHTS),
+                    help="b per lead window, comma-separated (Table S1)")
+    ap.add_argument("--no-rain-scale", action="store_true",
+                    help="train on rainfall in mm (the TS term is then inert)")
+    ap.add_argument("--all-predictors", action="store_true",
+                    help="use all 26 archive fields instead of the paper's 18")
+    ap.add_argument("--tag", default="", help="suffix for the output filenames")
+    ap.add_argument("--member-ids", default="",
+                    help="train only these members, e.g. 0-4 or 5,6 (one process "
+                         "per GPU); outputs get a _part suffix for --merge")
+    ap.add_argument("--per-window", action="store_true",
+                    help="train a separate model per lead window (1-7, 8-15, 16-23, "
+                         "24-30) for each member, instead of one model for all leads")
+    ap.add_argument("--merge", action="store_true",
+                    help="combine the _part outputs of this --split/--tag and exit")
     args = ap.parse_args()
+    if args.merge:
+        merge_parts(args.split, args.tag)
+        return
+    ts_weights = [float(b) for b in args.ts_weights.split(",")]
+    assert len(ts_weights) == len(C.DONG_LEAD_WINDOWS), "one b per lead window"
 
     set_seed(C.SEED)
     dev = device()
     t0 = time.time()
-    # Prefer the 19-monsoon packed file when it exists; percell_v2.npz is the
-    # original 11-monsoon build, kept so v1 results stay reproducible.
-    packed = next((q for q in (C.PROCESSED / "percell_v2_full.npz",
-                               C.PROCESSED / "percell_v2.npz") if q.exists()),
-                  C.PROCESSED / "percell_v2.npz")
-    if packed.exists():
-        # Already cropped, standardised and float16 -- see pack_percell_kaggle.py
-        z = np.load(packed, allow_pickle=True)
-        coarse = z["coarse"][:, :args.members].astype(np.float32)
-        pre_standardised = True
-        print(f"device={dev}  coarse {coarse.shape} from packed file "
-              f"loaded in {time.time()-t0:.0f}s")
-    else:
-        coarse, inits, leads, names = load_members(args.members)
-        z = np.load(DSET, allow_pickle=True)
-        pre_standardised = False
-        print(f"device={dev}  coarse {coarse.shape}  ({coarse.nbytes/1e6:.0f} MB) "
-              f"loaded in {time.time()-t0:.0f}s")
+    coarse, channels, z = load_inputs(args.members, args.all_predictors)
+    print(f"device={dev}  coarse {coarse.shape}  ({len(channels)} predictors) "
+          f"loaded in {time.time()-t0:.0f}s")
     target, mask, catchment = z["target"], z["mask"], z["catchment"]
-    dem = np.load(C.PROCESSED / "dem_fine.npz", allow_pickle=True)
+    init_year, lead = z["init_year"], z["lead"]
     flats, flons = fine_grid()
 
     cells = np.argwhere(catchment)                       # (224, 2)
     rows, cols = patch_index(cells, coarse.shape[3], coarse.shape[4])
-    # patch_index() asserts every 3x3 patch is in bounds, so reaching here
-    # means none were clamped -- but say it from the data, not from a literal.
-    print(f"  {len(cells)} catchment cells, "
-          f"{len(cells)} in-bounds 3x3 patches on the "
+    print(f"  {len(cells)} catchment cells, all 3x3 patches in bounds on the "
           f"{coarse.shape[3]}x{coarse.shape[4]} coarse grid")
 
-    # Coordinates for the embedding: latitude, longitude, elevation of the cell.
-    coords = np.stack([flats[cells[:, 0]], flons[cells[:, 1]],
-                       dem["elev_mean"][cells[:, 0], cells[:, 1]]], 1).astype(np.float32)
+    # The paper embeds latitude and longitude. Elevation stays in the coarse
+    # predictor channels rather than the coordinate embedding.
+    coords = np.stack([flats[cells[:, 0]], flons[cells[:, 1]]], 1).astype(np.float32)
+    csd = np.where(coords.std(0, keepdims=True) < 1e-6, 1.0, coords.std(0, keepdims=True))
+    cz = torch.from_numpy(((coords - coords.mean(0, keepdims=True)) / csd)
+                          .astype(np.float32)).to(dev)
 
-    y_cells = target[:, cells[:, 0], cells[:, 1]]        # (n_key, 224)
+    y_cells = target[:, cells[:, 0], cells[:, 1]]        # (n_key, 224) mm
     m_cells = mask[:, cells[:, 0], cells[:, 1]]
-    init_year = z["init_year"]
+    win = lead_window(lead)
     n_key, n_mem = len(y_cells), coarse.shape[1]
-    print(f"  {n_key} keys x {n_mem} members x {len(cells)} cells "
-          f"= {n_key*n_mem*len(cells)/1e6:.1f}M per-cell samples/epoch\n")
 
     rows_t = torch.from_numpy(rows).to(dev)
     cols_t = torch.from_numpy(cols).to(dev)
-    coords_t = torch.from_numpy(coords).to(dev)
-
     def gather(cb):
-        """(B, C, 7, 7) -> (B*224, C, 3, 3): every cell's patch from every field."""
+        """(B, C, H, W) -> (B*224, C, 3, 3): every cell's patch from every field."""
         p = cb[:, :, rows_t[:, :, None], cols_t[:, None, :]]   # (B, C, 224, 3, 3)
         return p.permute(0, 2, 1, 3, 4).reshape(-1, cb.shape[1], 3, 3)
 
+    member_ids = parse_members(args.member_ids, n_mem)
+    stem = f"percell_v2_{args.split}{args.tag}"
+    if len(member_ids) < n_mem:
+        stem += f"_part{member_ids[0]}-{member_ids[-1]}"
+    ckpt_dir = C.CHECKPOINTS / f"percell_v2_{args.split}{args.tag}"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    folds = split_folds(init_year, args.split, args.folds)
     rows_out = []
-    oof = np.zeros((n_key, len(cells)), np.float32)
-    # Every member's downscaled field, kept because CRPS and the ensemble
-    # streamflow forecast both need the spread, not just the mean.
-    oof_mem = np.zeros((n_key, n_mem, len(cells)), np.float32)
-    for Y in YEARS[:args.folds]:
+    pred_mem = np.full((n_key, n_mem, len(cells)), np.nan, np.float32)   # mm
+    tested = np.zeros(n_key, bool)
+    for name, test_k, val_k in folds:
         tf = time.time()
-        test_k = init_year == Y
-        # Inner validation year for early stopping.  DEFAULT: the chronologically
-        # last non-test year -- which is 2022 for 18 of the 19 folds, so 2022
-        # never enters training and every fold's early stopping is tuned on the
-        # same monsoon.  That wastes a year of data and correlates model
-        # selection across folds.  It is not a leak: the validation year is
-        # always excluded from training.  --val-rotate gives each year one turn
-        # as validation instead.  The documented requirement -- a WHOLE year,
-        # never a random split, because fields inside one monsoon correlate --
-        # holds either way.
-        if args.val_rotate:
-            inner = YEARS[(YEARS.index(Y) + 1) % len(YEARS)]
-        else:
-            inner = [y for y in YEARS if y != Y][-1]
-        val_k = init_year == inner
         train_k = ~test_k & ~val_k
+        tr_years = sorted(set(int(y) for y in init_year[train_k]))
+        print(f"\n[{name}] train {tr_years[0]}-{tr_years[-1]} ({int(train_k.sum())} keys)  "
+              f"val {sorted(set(init_year[val_k].tolist()))}  "
+              f"test {sorted(set(init_year[test_k].tolist()))}  "
+              f"x {n_mem} members x {len(cells)} cells")
 
-        mu = coarse[train_k].mean(axis=(0, 1, 3, 4), keepdims=True)
-        sd = coarse[train_k].std(axis=(0, 1, 3, 4), keepdims=True)
-        sd = np.where(sd < 1e-6, 1.0, sd)
-        cmu = coords[  # coordinate scaler, train cells are all cells
-            :].mean(0, keepdims=True)
-        csd = np.where(coords.std(0, keepdims=True) < 1e-6, 1.0, coords.std(0, keepdims=True))
-        cz = torch.from_numpy(((coords - cmu) / csd).astype(np.float32)).to(dev)
+        obs_tr = y_cells[train_k][m_cells[train_k]]
+        scale = 1.0 if args.no_rain_scale else float(obs_tr.std())
 
-        # Domain-wide fallback, matching configs/config.py.  A cell with too
-        # few observations previously fell back to 0.0, which makes every
-        # prediction a "hit" for that cell and silently removes it from the
-        # threat-score term.  Use the domain p90 over training rows instead.
-        _dom = y_cells[train_k][m_cells[train_k]]
-        dom_p90 = float(np.percentile(_dom, C.HEAVY_RAIN_PERCENTILE)) if _dom.size else 0.0
-        thr = np.zeros(len(cells), np.float32)
-        n_fallback = 0
+        # Heavy-rain threshold: per-cell p90 over training rows.  A cell with too
+        # few observations takes the domain p90 rather than 0.0, which would make
+        # every prediction a hit and drop that cell from the TS term.
+        dom_p90 = float(np.percentile(obs_tr, C.HEAVY_RAIN_PERCENTILE))
+        thr = np.full(len(cells), dom_p90, np.float32)
         for j in range(len(cells)):
             v = y_cells[train_k, j][m_cells[train_k, j]]
             if len(v) >= C.HEAVY_RAIN_MIN_OBS:
                 thr[j] = np.percentile(v, C.HEAVY_RAIN_PERCENTILE)
-            else:
-                thr[j] = dom_p90
-                n_fallback += 1
-        if n_fallback:
-            print(f"    {n_fallback}/{len(cells)} cells below "
-                  f"{C.HEAVY_RAIN_MIN_OBS} obs -> domain p90 {dom_p90:.2f} mm")
-        thr_t = torch.from_numpy(thr).to(dev)
+        print(f"  rain scale {scale:.2f} mm   p90 threshold median "
+              f"{np.median(thr):.1f} mm ({np.median(thr)/scale:.2f} scaled)")
+        thr_t = torch.from_numpy(thr / scale).to(dev)
 
-        model = ResNetDownscaler(n_features=coarse.shape[2], n_coords=3,
-                                 dropout=C.DROPOUT).to(dev)
-        opt = torch.optim.Adam(model.parameters(), lr=args.lr,
-                               weight_decay=C.WEIGHT_DECAY)
+        def batch(k):
+            return (torch.from_numpy(y_cells[k] / scale).float().to(dev),
+                    torch.from_numpy(m_cells[k]).to(dev),
+                    torch.from_numpy(win[k])[:, None].expand(-1, len(cells)).to(dev))
 
-        tr_idx = np.repeat(np.where(train_k)[0], n_mem)
-        tr_mem = np.tile(np.arange(n_mem), train_k.sum())
+        def train_model(mi, train_k, val_k, test_k, label):
+            """Train one model for member mi on the given rows.
 
-        def run(sel_k, train: bool, members_out=None):
-            idx = np.where(sel_k)[0]
-            out = np.zeros((len(idx), len(cells)), np.float32)
-            model.train(train)
-            order = np.arange(len(idx))
-            for s in range(0, len(idx), args.fields_per_batch):
-                b = order[s:s + args.fields_per_batch]
-                k = idx[b]
-                # inference uses the ensemble MEAN of member predictions, which
-                # is what the paper scores; training sees members individually
-                mem = range(n_mem) if not train else [np.random.randint(n_mem)]
-                acc, per_mem = 0, []
-                for mi in mem:
-                    cb = torch.from_numpy(coarse[k, mi]).to(dev)
-                    cb = (cb - torch.from_numpy(mu[0, 0]).to(dev)) / torch.from_numpy(sd[0, 0]).to(dev)
-                    p = model(gather(cb), cz.repeat(len(k), 1)).view(len(k), -1)
-                    if train:
-                        yb = torch.from_numpy(y_cells[k]).to(dev)
-                        mb = torch.from_numpy(m_cells[k]).to(dev)
-                        opt.zero_grad()
-                        loss, _ = masked_hybrid_loss(
-                            p, yb, mb, thr_t.expand_as(p),
-                            a=args.sigmoid_sharpness, b=args.ts_weight,
-                            log_space=C.LOSS_LOG_SPACE)
-                        loss.backward()
-                        torch.nn.utils.clip_grad_norm_(model.parameters(), C.GRAD_CLIP_NORM)
-                        opt.step()
-                    else:
-                        acc = acc + p.detach()
-                        per_mem.append(p.detach().cpu().numpy())
-                if not train:
-                    out[b] = (acc / n_mem).cpu().numpy()
-                    if members_out is not None:
-                        members_out[b] = np.stack(per_mem, 1)
-            return out
+            -> predictions for test_k rows in mm, info.  `label` names the
+            checkpoint: a member, or a member and lead window.
+            """
+            mu = coarse[train_k, mi].mean(axis=(0, 2, 3), keepdims=True)
+            sd = coarse[train_k, mi].std(axis=(0, 2, 3), keepdims=True)
+            sd = np.where(sd < 1e-6, 1.0, sd)
+            mu_t = torch.from_numpy(mu[0]).to(dev)
+            sd_t = torch.from_numpy(sd[0]).to(dev)
+            # Seed per member, so a member's model does not depend on which
+            # members trained before it in the same process.
+            rng = np.random.default_rng(C.SEED + mi)
+            torch.manual_seed(C.SEED + mi)
 
-        best, best_state, bad = -np.inf, None, 0
-        for ep in range(args.epochs):
-            run(train_k, True)
-            p = run(val_k, False)
-            sel = m_cells[val_k]
-            score = r2(p[sel], y_cells[val_k][sel])
-            if score > best + C.EARLY_STOP_MIN_DELTA:
-                best, bad = score, 0
-                best_state = {k: v.detach().clone() for k, v in model.state_dict().items()}
-            else:
-                bad += 1
+            model = ResNetDownscaler(n_features=coarse.shape[2], n_coords=2,
+                                     dropout=C.DROPOUT).to(dev)
+            opt = torch.optim.Adam(model.parameters(), lr=args.lr,
+                                   weight_decay=C.WEIGHT_DECAY)
+
+            def forward(k):
+                cb = (torch.from_numpy(coarse[k, mi]).to(dev) - mu_t) / sd_t
+                return model(gather(cb), cz.repeat(len(k), 1)).view(len(k), -1)
+
+            def loss_on(p, k):
+                yb, mb, wb = batch(k)
+                return masked_hybrid_loss(p, yb, mb, thr_t.expand_as(p),
+                                          a=args.sigmoid_sharpness, b=ts_weights,
+                                          log_space=C.LOSS_LOG_SPACE, window=wb)
+
+            def predict(sel_k):
+                """Scaled predictions for every row of sel_k, eval mode."""
+                idx = np.where(sel_k)[0]
+                model.eval()
+                with torch.no_grad():
+                    return idx, torch.cat([forward(idx[s:s + 64])
+                                           for s in range(0, len(idx), 64)])
+
+            tr_idx = np.where(train_k)[0]
+            best, best_state, bad, history = np.inf, None, 0, []
+            for ep in range(args.epochs):
+                model.train()
+                perm = rng.permutation(tr_idx)
+                for s in range(0, len(perm), args.fields_per_batch):
+                    k = perm[s:s + args.fields_per_batch]
+                    opt.zero_grad()
+                    loss, _ = loss_on(forward(k), k)
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), C.GRAD_CLIP_NORM)
+                    opt.step()
+                # Early stopping on the training loss itself, over the whole
+                # validation year: stopping on R^2 would pick the most MSE-like
+                # epoch and undo what the TS term is there for.
+                idx, p = predict(val_k)
+                with torch.no_grad():
+                    vloss, info = loss_on(p, idx)
+                vloss = float(vloss)
+                history.append({"epoch": ep + 1, "val_loss": vloss,
+                                "val_mse": float(info["mse"]),
+                                "val_ts": info["ts_by_window"]})
+                if not np.isfinite(vloss):
+                    raise RuntimeError(f"member {mi}: validation loss {vloss} at epoch {ep + 1}")
+                improved = vloss < best - C.EARLY_STOP_MIN_DELTA
+                if improved:
+                    best, bad, best_ep = vloss, 0, ep + 1
+                    best_state = {n: v.detach().clone() for n, v in model.state_dict().items()}
+                else:
+                    bad += 1
+                print(f"      {label} ep {ep + 1:2d}  val loss {vloss:.4f}  mse {history[-1]['val_mse']:.4f}"
+                      f"  TS {[round(t, 3) for t in info['ts_by_window']]}"
+                      f"{'  *' if improved else ''}", flush=True)
                 if bad >= args.patience:
                     break
+            model.load_state_dict(best_state)
+            torch.save({"state_dict": best_state, "mu": mu[0], "sd": sd[0],
+                        "rain_scale_mm": scale, "threshold_mm": thr, "channels": channels,
+                        "cells": cells, "member": mi, "fold": name, "best_epoch": best_ep,
+                        "config": vars(args)}, ckpt_dir / f"{name}_{label}.pt")
+            idx, p = predict(test_k)
+            return p.cpu().numpy() * scale, {"member": mi, "model": label, "epochs": ep + 1,
+                                             "best_epoch": best_ep, "best_val_loss": best,
+                                             "history": history}
 
-        model.load_state_dict(best_state)
-        mem_buf = np.zeros((int(test_k.sum()), n_mem, len(cells)), np.float32)
-        p = run(test_k, False, members_out=mem_buf)
-        oof[test_k] = p
-        oof_mem[test_k] = mem_buf
-        sel = m_cells[test_k]
-        score = r2(p[sel], y_cells[test_k][sel])
-        rows_out.append({"year": Y, "percell_v2": score, "field_v1": V1_FOLDS.get(Y, float('nan')),
-                         "delta": score - V1_FOLDS.get(Y, float('nan')), "epochs": ep + 1,
-                         "seconds": round(time.time() - tf, 1)})
-        print(f"  {Y}: per-cell v2 {score:+.4f}   field v1 {V1_FOLDS.get(Y, float('nan')):+.4f}   "
-              f"delta {score - V1_FOLDS.get(Y, float('nan')):+.4f}   ({ep+1} ep, {time.time()-tf:.0f}s)")
-
-    v2 = np.array([r["percell_v2"] for r in rows_out])
-    # V1_FOLDS stops at 2014, so every year after it has delta = nan.  Averaging
-    # those in poisons delta_mean/delta_se/t to nan and makes "wins" count a
-    # missing baseline as a loss.  Compare only where a baseline exists, and say
-    # how many years that was -- the v2 scores themselves still use all folds.
-    d_all = np.array([r["delta"] for r in rows_out])
-    d = d_all[np.isfinite(d_all)]
-    se = d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else float("nan")
-    summary = {"median": float(np.median(v2)), "mean": float(v2.mean()),
-               "_v1_note": "field_v1/delta compare against the SUPERSEDED 11-monsoon "
-                           "v1 run (5x5, 10 vars, leads 1-17, control member). Legacy "
-                           "provenance only -- not a like-for-like baseline. Use raw EC "
-                           "/ EC-QM from cnn/paper_metrics.py.",
-               "delta_median": float(np.median(d)), "delta_mean": float(d.mean()),
-               "delta_se": float(se), "t": float(d.mean() / se) if se else None,
-               "wins": int((d > 0).sum()), "n_folds": len(v2),
-               "n_compared": len(d)}
-    print(f"\n=== per-cell v2 (Dong et al. architecture), {len(v2)} monsoons ===")
-    print(f"  per-cell v2  median {summary['median']:+.4f}  mean {summary['mean']:+.4f}")
-    # The v1 delta is LEGACY and deliberately demoted below the headline.  v1 is
-    # 5x5 cells / 10 predictors / leads 1-17 / control member / 11 monsoons; this
-    # is 7x7 / 26 / 1-30 / 10 members / 19.  The difference is not a measurement
-    # of anything, and it exists for only the 11 years the two share.  The
-    # baselines that apply to this model are raw EC and EC-QM on all 19 monsoons
-    # (cnn/paper_metrics.py).  Kept so v1 stays reproducible, not to be quoted.
-    print(f"  [legacy] vs field v1 on the {len(d)} shared monsoons only: "
-          f"delta {summary['delta_mean']:+.4f} +/- {se:.4f} (SE), "
-          f"wins {summary['wins']}/{len(d)} -- NOT a like-for-like baseline")
+        member_info = []
+        for mi in member_ids:
+            # Per-window: Table S1 sets b by lead window, and one model for all
+            # leads was measured to shrink every lead alike -- discarding the
+            # skill ECMWF has at leads 1-7.  Each window model sees only its leads.
+            windows = range(len(C.DONG_LEAD_WINDOWS)) if args.per_window else [None]
+            for w in windows:
+                tm = time.time()
+                in_w = np.ones(n_key, bool) if w is None else win == w
+                label = f"member{mi:02d}" + ("" if w is None else
+                                             "_lead{}-{}".format(*C.DONG_LEAD_WINDOWS[w]))
+                pm, info = train_model(mi, train_k & in_w, val_k & in_w,
+                                       test_k & in_w, label)
+                pred_mem[test_k & in_w, mi] = pm
+                member_info.append(info)
+                print(f"    {label}: {info['epochs']} epochs, best {info['best_epoch']}  "
+                      f"val loss {info['best_val_loss']:.4f}  ({time.time()-tm:.0f}s)",
+                      flush=True)
+        tested |= test_k
+        rows_out.append({"fold": name, "rain_scale_mm": scale, "members": member_info,
+                         "seconds": round(time.time() - tf, 1),
+                         **fold_readout(pred_mem[test_k][:, member_ids],
+                                        y_cells[test_k], m_cells[test_k])})
+        print(f"  [{name}] ensemble-mean per-cell R^2 {rows_out[-1]['percell_r2']:+.4f}   "
+              f"basin-mean RMSE {rows_out[-1]['basin_rmse_mm']:.2f} mm/day   "
+              f"({time.time()-tf:.0f}s)")
 
     C.METRICS.mkdir(parents=True, exist_ok=True)
-    out = C.METRICS / f"loyo_percell_v2{args.tag}.json"
-    out.write_text(json.dumps({"config": vars(args), "folds": rows_out,
-                               "summary": summary}, indent=2, default=str))
+    out = C.METRICS / f"{stem}.json"
+    out.write_text(json.dumps({"config": vars(args), "predictors": channels,
+                               "folds": rows_out}, indent=2, default=str))
     print(f"\nwrote {out}")
-
     np.savez_compressed(
-        C.PROCESSED / f"percell_v2_oof{args.tag}.npz",
-        oof=oof, oof_members=oof_mem, cells=cells,
-        init_year=init_year, lead=z["lead"], valid=z["valid"],
+        C.PROCESSED / f"{stem}.npz",
+        pred_members=pred_mem, tested=tested, cells=cells,
+        init_year=init_year, lead=lead, valid=z["valid"],
         target=y_cells, mask=m_cells,
     )
-    print(f"wrote {C.PROCESSED/('percell_v2_oof'+args.tag+'.npz')}  "
-          f"<- per-member fields for CRPS and the LSTM stage")
+    print(f"wrote {C.PROCESSED / (stem + '.npz')}  <- per-member test predictions, mm")
 
 
 if __name__ == "__main__":

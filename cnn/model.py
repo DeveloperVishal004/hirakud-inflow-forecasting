@@ -55,7 +55,7 @@ class ResNetDownscaler(nn.Module):
     having to encode absolute position.
     """
 
-    def __init__(self, n_features: int, n_coords: int = 3, widths=(64, 32, 16),
+    def __init__(self, n_features: int, n_coords: int = 2, widths=(64, 32, 16),
                  embed_dim: int = 16, dropout: float = 0.2):
         super().__init__()
         blocks, c = [], n_features
@@ -85,37 +85,34 @@ class ResNetDownscaler(nn.Module):
         return F.softplus(self.head(h)).squeeze(-1)
 
 
-def masked_hybrid_loss(pred, obs, mask, threshold, a: float = 1.0, b: float = 1.0,
-                        log_space: bool = False):
-    """MSE + b * (1 - TS), with a differentiable threat score, over valid cells.
+def masked_hybrid_loss(pred, obs, mask, threshold, a: float = 1.0, b=1.0,
+                       log_space: bool = False, window=None):
+    """MSE + sum_w (n_w / n) * b_w * (1 - TS_w), with a differentiable threat score.
 
     Dong et al. (2025) eqs. 3-7.  The threat score TS = H / (H + F + M) is
     categorical and non-differentiable, so the forecast side of each indicator is
-    replaced by a sigmoid centred on the threshold; the observation side stays a
-    hard indicator because no gradient flows through it.
+    replaced by sigmoid(a * (pred - threshold)); the observation side stays a hard
+    indicator because no gradient flows through it.
 
     `threshold` is the 90th percentile of observed rainfall, per fine cell.
     `mask` is False wherever IMD reported nothing -- those cells are excluded
-    from both terms instead of being counted as correct zeros.
+    from every term instead of being counted as correct zeros.
 
-    `log_space`: DEFAULTS TO FALSE, and the production path passes
-    C.LOSS_LOG_SPACE (also False) explicitly.  The paragraph below records why
-    log space was TRIED; configs/config.py records the measured outcome, which
-    was that it made every real-mm metric worse (test R^2 0.116 -> 0.019, bias
-    -1.5mm -> -4.6mm, Spearman 0.51 -> 0.48) because it optimises closer to the
-    conditional median on a right-skewed target.  Do not re-enable without
-    re-checking Light_R2 and Bias, not just overall R^2.
+    LEAD WINDOWS.  Supplement Table S1 gives b per lead window (0.4, 0.8, 1.5, 2).
+    `window` holds each element's window index and `b` one weight per window.
+    TS is computed within each window, because a hit at lead 3 and a hit at lead
+    28 are different skills, and each window's term is weighted by its share of
+    valid elements.  That is exactly the sample average of the paper's per-window
+    loss, b_w (1 - TS_w) + MSE_w.  With window=None and a scalar b this reduces to
+    the single-window form, MSE + b (1 - TS).
 
-    The motivation, kept for the record: compute the MSE term on log1p(rain)
-    rather than raw mm.  Daily
-    rainfall here is heavily right-skewed (mean ~9mm, max ~575mm); a diagnostic
-    on a trained model found R^2 negative on the bottom 90% of rain days and
-    positive only because of the top 10% -- raw-mm MSE gives the loss almost no
-    incentive to get light/moderate rain right, since a handful of large-value
-    errors dominate the sum.  log1p compresses that scale so the light-rain
-    majority of the sample actually shapes the gradient.  softplus keeps the
-    model's output in real mm (needed for the threat-score term and for masked
-    metrics to stay comparable across runs); only the loss's error term moves.
+    UNITS.  The loss is only balanced if pred, obs and threshold are on a scale
+    where MSE is O(1) -- see DONG_* in configs/config.py.  The trainer passes
+    rainfall divided by its training standard deviation.
+
+    `log_space` stays False: MSE on log1p(rain) was measured to make every
+    real-mm metric worse (test R^2 0.116 -> 0.019, bias -1.5 -> -4.6 mm) because
+    it fits nearer the conditional median of a right-skewed target.
     """
     mask = mask.float()
     n = mask.sum().clamp(min=1.0)
@@ -125,18 +122,30 @@ def masked_hybrid_loss(pred, obs, mask, threshold, a: float = 1.0, b: float = 1.
     else:
         mse = (((pred - obs) ** 2) * mask).sum() / n
 
+    if window is None:
+        window = torch.zeros_like(pred, dtype=torch.long)
+    weights = [float(b)] if np.isscalar(b) else [float(x) for x in b]
+
     obs_wet = (obs > threshold).float()
     fc_wet = torch.sigmoid(a * (pred - threshold))
     fc_dry = torch.sigmoid(-a * (pred - threshold))
 
-    hits = (obs_wet * fc_wet * mask).sum()
-    false_alarms = ((1.0 - obs_wet) * fc_wet * mask).sum()
-    misses = (obs_wet * fc_dry * mask).sum()
-
-    ts = hits / (hits + false_alarms + misses + 1e-6)
-    with torch.no_grad():
-        mse_mm = (((pred - obs) ** 2) * mask).sum() / n  # real-mm MSE, for cross-run comparability
-    return mse + b * (1.0 - ts), {"mse": mse.detach(), "mse_mm": mse_mm, "ts": ts.detach()}
+    ts_term = pred.new_zeros(())
+    ts_by_window = []
+    for w, bw in enumerate(weights):
+        sel = mask * (window == w).float()
+        n_w = sel.sum()
+        if n_w < 1:
+            ts_by_window.append(float("nan"))
+            continue
+        hits = (obs_wet * fc_wet * sel).sum()
+        false_alarms = ((1.0 - obs_wet) * fc_wet * sel).sum()
+        misses = (obs_wet * fc_dry * sel).sum()
+        ts = hits / (hits + false_alarms + misses + 1e-6)
+        ts_term = ts_term + (n_w / n) * bw * (1.0 - ts)
+        ts_by_window.append(float(ts.detach()))
+    return mse + ts_term, {"mse": mse.detach(), "ts_term": ts_term.detach(),
+                           "ts_by_window": ts_by_window}
 
 
 def _spearman(p: np.ndarray, o: np.ndarray) -> float:

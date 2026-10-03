@@ -11,17 +11,12 @@ WHAT CHANGES FROM v1 (data/processed/coarse_grid.npz):
     members       control only      ->  control + 10 perturbed
     samples       5,797             ->  9,240 (308 inits x 30 leads)
 
-THE MEMBER DIMENSION.  Members are not flattened into extra samples here.  The
-ensemble is summarised into two things the model can actually use:
-
-    mean   the ensemble's best estimate of each field
-    sd     how much the members disagree -- a forecast-confidence signal that
-           simply did not exist in v1, where there was one member
-
-Training on all 11 members as separate samples (11x the rows, same target) is
-the obvious alternative and is left available via --members all; it is an
-ablation, not the default, because it multiplies training cost elevenfold to
-learn from fields whose target is identical.
+THE MEMBER DIMENSION.  The production per-cell trainer retains the ten
+perturbed members as a separate member axis and fits one independent CNN to
+each member.  This builder's default remains a single key per
+(initialisation, lead), with ensemble mean and spread channels, because that
+is the field-level dataset layout.  Use --members all only for the field-level
+alternative, where each member is intentionally a separate sample.
 
 ACCUMULATED FIELDS ARE DIFFERENCED.  tp, cp, ssrd, sshf and slhf accumulate from
 initialisation -- lead 30's tp is the whole month's rain, not that day's.  They
